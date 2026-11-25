@@ -24,11 +24,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub const MAX_CONNS: usize = 48;
-pub const MAX_PER_ADDR: usize = 12;
+pub const MAX_CONNS: usize = 64;
+/// One device: a page, its reloads' lingering keep-alive sockets and a viewer's
+/// signaling socket. Seen in tests: 12 refused a browser's own page loads.
+pub const MAX_PER_ADDR: usize = 24;
 /// Tried in order; the first free one is used. The window shows the address.
 pub const PORTS: std::ops::RangeInclusive<u16> = 47900..=47919;
-const KEEP_ALIVE_IDLE: Duration = Duration::from_secs(10);
+const KEEP_ALIVE_IDLE: Duration = Duration::from_secs(5);
 const KEEP_ALIVE_MAX: usize = 200;
 
 /// Addresses a viewer may come from: the private ranges a home network uses,
@@ -124,7 +126,8 @@ impl Ctx {
         let mut c = lock(&self.conns);
         let total: usize = c.values().sum();
         let mine = c.get(&ip).copied().unwrap_or(0);
-        if total >= MAX_CONNS || mine >= MAX_PER_ADDR {
+        // Loopback has no per-address cap: the owner's window is there.
+        if total >= MAX_CONNS || (mine >= MAX_PER_ADDR && !ip.is_loopback()) {
             return false;
         }
         *c.entry(ip).or_default() += 1;

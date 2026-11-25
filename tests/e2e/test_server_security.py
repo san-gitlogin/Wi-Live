@@ -112,22 +112,24 @@ def test_a_silent_connection_is_dropped_and_never_blocks_others(server):
     s.close()
 
 
+@needs_lan
 def test_one_address_cannot_hold_every_connection(server):
     held = []
-    for _ in range(12):
-        held.append(socket.create_connection(("127.0.0.1", server.port), timeout=5))
-    extra = socket.create_connection(("127.0.0.1", server.port), timeout=5)
-    extra.sendall(b"GET /api/info HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+    for _ in range(24):
+        held.append(socket.create_connection((LAN, server.port), timeout=5))
+    extra = socket.create_connection((LAN, server.port), timeout=5)
+    extra.sendall(f"GET /api/info HTTP/1.1\r\nHost: {LAN}\r\n\r\n".encode())
     extra.settimeout(3)
     try:
         refused = extra.recv(64) == b""
     except ConnectionResetError:
         refused = True
-    assert refused, "the 13th connection from one address is closed"
+    assert refused, "the 25th connection from one address is closed"
+    assert server.http("GET", "/api/info")[0] == 200, "loopback (the owner's window) is not held up by it"
     for h in held:
         h.close()
     time.sleep(0.3)
-    assert server.http("GET", "/api/info")[0] == 200, "and served again once they close"
+    assert server.http("GET", "/api/info", ip=LAN)[0] == 200, "and served again once they close"
 
 
 def test_pairing_requests_are_bounded_and_a_wrong_reveal_ends_one(server):
