@@ -11,13 +11,40 @@ Newest first. Read REQUIREMENTS.md, DESIGN.md and DECISIONS.md before continuing
 | 2 | Server: one port, dashboard, pairing API, owner API, signaling, defences | done 2026-11-25 |
 | 3 | Dashboard: viewer (pair, watch, displays, sound, fit, stats) and owner window | done 2026-11-25 |
 | 4 | Tests: static, unit (+ planted bugs), e2e in real Chrome, security, tampering, latency gate | done 2026-11-25 |
-| 5 | App: tray, owner window (web view), storage, start at login, single instance | built + unit-tested; GUI not yet run on screen |
-| 6 | Real capture check on this Mac (needs Screen Recording for a signed app) | todo |
-| 7 | Packaging: signed macOS app, Windows exe, Linux; CI on all platforms | todo |
-| 8 | Signed updates and releases, HID-Fi's way | todo |
+| 5 | App: tray, owner window (web view), storage, start at login, single instance | done: installed and run on the owner's Mac; Windows VM (WebView2) |
+| 6 | Real capture: macOS (owner's Mac), Windows (DXGI + Media Foundation, VM), Linux (X11 + OpenH264, VM) | done 2026-11-26 |
+| 7 | Packaging and CI: signed macOS dmg, Windows exe, Linux x86_64 + ARM64; CI on all four | done 2026-11-26 |
+| 8 | Releases HID-Fi's way (own release key, own macOS certificate, signed SHA256SUMS) | done (tools/make_release.sh); in-app updates todo |
 | 9 | Trusted https (per-install name + real certificate); talk back (R-14) | todo |
 
 ## Log
+
+### 2026-11-26: phones, Windows, Linux, CI, the repo, the first release
+
+Owner's live test on an iPhone: controls dead on its side, full screen did nothing,
+the phone forgotten after scanning. Causes found: controls under the notch in landscape
+(no safe-area insets), iPhone has no page full screen, and the camera opens an in-app
+Safari view with its own storage. Fixed (insets everywhere, one-tap faded controls,
+iPhone's own player with resume, a Home Screen guide) and tested in WebKit with an
+iPhone's size, touch and a simulated notch. Pairing no longer needs BigInt (iOS < 14).
+A legacy floor guard (Safari 12.1 / Chrome 70 / Firefox 68).
+
+- Logo refined: continuous-curvature frame, the dot as its corner, one stroke family.
+- Owner window: memory/CPU/uptime self-monitor; activity scrolls; only changed parts redraw.
+- Picture choice per viewer: Auto, Sharp, Smooth, Saver.
+- Endurance: a full log and device list; 40 viewers after warm-up (memory trend
+  +0.25 MB/viewer, threads flat; a 100-viewer run swings 48-74 MB and falls back);
+  a restart found again without pairing; a 6 s network stall recovers by itself.
+- **Windows VM found two real bugs**: read deadlines set on a cloned socket handle did
+  not reach the reading handle (a silent client held a thread forever), and an error
+  reply was lost to a reset on close. Fixed; all browser tests pass there; the real app
+  runs (WebView2, 51 MB); real DXGI capture + Media Foundation checked.
+- **Linux VM (Docker, ARM64)**: build, 108 unit tests, clippy, the app, real X11 capture
+  + Cisco OpenH264 paired and decoded by a Python WebRTC viewer (red left, blue right).
+- **Latency probe corrected** (D-07, corrected): wall clock per frame, never before
+  decode, every display phase. 1080p60 p50 19-20 ms, p99 27-28.5 ms.
+- Repo public at github.com/san-gitlogin/Wi-Live; CI on macOS, Windows, Linux x86_64 + ARM64.
+- Release keys of its own (~/.wilive-release), tools/make_release.sh, docs/RELEASING.md.
 
 ### 2026-11-25: from nothing to a measured, tested first build
 
@@ -46,10 +73,9 @@ Newest first. Read REQUIREMENTS.md, DESIGN.md and DECISIONS.md before continuing
 
 ## Next
 
-1. Run the tray app on screen with the owner (it opens its window on first run).
-2. A signed macOS bundle, so Screen Recording can be granted once and kept; then the
-   real-capture latency check (a clock page on screen, read back by the probe) and a
-   clarity pass at native resolution (MAX_EDGE is 1920 today, inherited from HID-Fi).
-3. A QR code in the owner window (phone opens the address by camera).
-4. CI on Windows and Linux; installers; the release flow with signed updates.
-5. Linux tray (the server runs headless there today).
+1. In-app updates checked against the release key (HID-Fi's updater, ported).
+2. Trusted https (a per-install name with a real certificate), then talk back (R-14).
+3. Linux tray (ksni, as HID-Fi); Windows app icon in the .exe.
+4. Clarity at native resolution (MAX_EDGE 1920 today) and real-capture latency on
+   screen (tests/real_latency.py finds its clock but must be made robust).
+5. 720p's occasional extra compositor frame in headless Chrome (D-07, corrected).
