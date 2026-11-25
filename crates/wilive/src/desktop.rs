@@ -79,11 +79,24 @@ fn open_external(url: &str) {
         .spawn();
 }
 
+/// The app icon for the window's title bar and the taskbar.
+fn window_icon() -> Option<tao::window::Icon> {
+    let dec = png::Decoder::new(std::io::Cursor::new(include_bytes!(
+        "../assets/app-256.png"
+    )));
+    let mut r = dec.read_info().ok()?;
+    let mut buf = vec![0; r.output_buffer_size()?];
+    let info = r.next_frame(&mut buf).ok()?;
+    buf.truncate(info.buffer_size());
+    tao::window::Icon::from_rgba(buf, info.width, info.height).ok()
+}
+
 fn make_panel(target: &EventLoopWindowTarget<()>, port: u16, token: &str) -> Result<Panel, String> {
     let window = WindowBuilder::new()
         .with_title("Wi-Live")
         .with_inner_size(LogicalSize::new(980.0, 760.0))
         .with_min_inner_size(LogicalSize::new(380.0, 480.0))
+        .with_window_icon(window_icon())
         .build(target)
         .map_err(|e| e.to_string())?;
     let origin = format!("http://127.0.0.1:{port}/");
