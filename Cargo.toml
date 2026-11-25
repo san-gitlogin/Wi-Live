@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE.md"
+rust-version = "1.89"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "unwind"
+
+# str0m with HID-Fi's bandwidth-estimate fixes (vendor/str0m/PATCH.md): after an
+# idle screen, the estimate no longer collapses on WiFi.
+[patch.crates-io]
+str0m = { path = "vendor/str0m" }
