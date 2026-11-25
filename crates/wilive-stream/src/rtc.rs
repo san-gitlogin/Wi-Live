@@ -91,6 +91,15 @@ pub fn prepare(
         // Loss and round-trip time once a second: what tells a congested link
         // from WiFi jitter (see `Steady`).
         .set_stats_interval(Some(Duration::from_secs(1)))
+        // Playout delay 0/0 on every video frame (written in `run`): the browser
+        // shows each frame the moment it is decoded instead of smoothing it out.
+        // Measured in Chrome (tests/latency): decode to display was 28-31 ms of a
+        // 39-42 ms total; this is the cloud-gaming setting (D-07).
+        .set_extension_map({
+            let mut e = str0m::rtp::ExtensionMap::standard();
+            e.set(5, str0m::rtp::Extension::PlayoutDelay);
+            e
+        })
         .build(Instant::now());
     let socket = bind_media(local_ip)?;
     let addr = socket.local_addr()?;
@@ -515,6 +524,7 @@ pub fn run(
                 let t = MediaTime::new(pts_ms * 90, Frequency::NINETY_KHZ);
                 // The capture time, the clock the sound uses too: lip sync.
                 let captured = crate::epoch() + Duration::from_millis(pts_ms);
+                let w = w.playout_delay(MediaTime::ZERO, MediaTime::ZERO);
                 if let Err(e) = w.write(pt, captured, t, frame.data.clone()) {
                     break End::Failed(e.to_string());
                 }

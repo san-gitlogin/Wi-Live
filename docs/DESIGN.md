@@ -57,9 +57,9 @@ that makes those numbers worse fails the run, just as a broken feature would.
   16.7 ms, and at 30 fps half a frame alone is 17 ms of waiting.
 - **Network.** UDP via str0m (ICE-lite, with no TURN on a LAN). The pacer never
   holds a keyframe behind a low estimate (`vendor/str0m/PATCH.md`).
-- **Viewer.** `jitterBufferTarget = 0` (`playoutDelayHint` on older browsers). The
-  video element shows frames as they decode, and nothing waits on audio sync for
-  the picture.
+- **Viewer.** Every video frame carries playout delay 0/0, so Chrome renders it the
+  moment it decodes (D-07: decode-to-display went from 28 ms to about 10). Also
+  `jitterBufferTarget = 0`. Nothing waits on audio sync for the picture.
 - **Slow links.** The stream drops frames and lowers the rate. It never builds a
   queue: queued video is lag that never recovers.
 

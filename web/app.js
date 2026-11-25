@@ -273,7 +273,7 @@
     const BITS = 32, BLOCK = 16, cv = document.createElement('canvas');
     cv.width = (BITS + 2) * BLOCK; cv.height = BLOCK;
     const cx = cv.getContext('2d', { willReadFrequently: true });
-    const samples = [];
+    const samples = [], parts = [];
     let bad = 0;
     const onFrame = (now, meta) => {
       // The strip is drawn at the display's size; the stream may be smaller.
@@ -286,14 +286,23 @@
           let v = 0; for (let c = 1; c <= BITS; c++) v = (v * 2) + (at(c) ? 1 : 0);
           const shown = (performance.timeOrigin + meta.expectedDisplayTime) % 4294967296;
           let d = shown - v; if (d < -2147483648) d += 4294967296;
-          if (d > -50 && d < 10000) samples.push(d); else bad++;
+          if (d > -50 && d < 10000) {
+            samples.push(d);
+            // Where the time went: to the last packet arriving, decoding, then display.
+            if (meta.receiveTime) {
+              const rx = ((performance.timeOrigin + meta.receiveTime) % 4294967296) - v;
+              parts.push([Math.round(rx < -2147483648 ? rx + 4294967296 : rx), Math.round((meta.processingDuration || 0) * 1000),
+                          Math.round(meta.expectedDisplayTime - meta.receiveTime - (meta.processingDuration || 0) * 1000)]);
+              if (parts.length > 3000) parts.splice(0, parts.length - 3000);
+            }
+          } else bad++;
         } else bad++;
       } catch (e) { bad++; }
       if (samples.length > 3000) samples.splice(0, samples.length - 3000);
       video.requestVideoFrameCallback(onFrame);
     };
     video.requestVideoFrameCallback(onFrame);
-    T.probe = { samples, bad: () => bad, reset() { samples.length = 0; bad = 0; } };
+    T.probe = { samples, parts, bad: () => bad, reset() { samples.length = 0; parts.length = 0; bad = 0; } };
     setInterval(() => {
       if (samples.length < 10) return;
       const s = samples.slice().sort((a, b) => a - b), q = p => Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]);

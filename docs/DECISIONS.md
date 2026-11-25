@@ -50,3 +50,22 @@ next step. It also enables talk back (R-14).
 Owner: "different coloured theme than HID-Fi, maybe with red and shades of white
 ... appropriate fonts and new logo that is not childish, but professional."
 docs/BRAND.md.
+
+## D-07 Playout delay 0/0: show each frame the moment it is decoded (2026-11-25)
+
+Measured in Chrome with tests/latency, splitting each frame's time with
+`requestVideoFrameCallback` (`receiveTime`, `processingDuration`): at 1080p60, encode
+and network took 13 ms, decode 1 ms, and **decode to display 28 ms**. That last part
+was the browser smoothing frame timing, and only 44 of 60 frames were presented. Every
+video frame now carries the RTP playout-delay extension with min = max = 0, the setting
+cloud gaming uses. Chrome then renders frames as they decode.
+
+| loopback, 3 runs | before p50 / p99 | after p50 / p99 |
+|---|---|---|
+| 1920x1080@60 | 42.0 / 43.4 ms, 44 fps shown | 19-26 / 27.1-28.5 ms, 60 fps shown |
+| 1280x720@60 | 39.4 / 41.0 ms | 9-32 / 10.6-33.1 ms |
+
+What remains is where a frame lands against the display's refresh (0 to 1 frame),
+which no sender can remove. The cost is that on a jittery link, frames are shown
+unevenly instead of late. If a viewer ever wants "smooth" over "now", it would
+become a per-viewer choice, never the default.

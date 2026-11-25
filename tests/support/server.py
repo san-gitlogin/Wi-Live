@@ -37,11 +37,16 @@ class Server:
     def __init__(self, args=("1280", "720", "60"), env=None):
         build()
         e = dict(os.environ, **(env or {}))
+        out = ROOT / "tests" / ".out"
+        out.mkdir(exist_ok=True)
+        # The server's log, kept for the run that just failed (tests/.out/serve.log).
+        self.log_path = out / "serve.log"
+        self._log = open(self.log_path, "w")
         self.proc = subprocess.Popen([str(EXE), *args], cwd=ROOT, env=e, stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                     stdout=subprocess.PIPE, stderr=self._log, text=True)
         line = self.proc.stdout.readline()
         if not line:
-            raise RuntimeError("serve did not start: " + self.proc.stderr.read()[-2000:])
+            raise RuntimeError("serve did not start: " + self.log_path.read_text()[-2000:])
         info = json.loads(line)
         self.port, self.owner, self.fp = info["port"], info["owner"], info["fp"]
         self.base = f"http://127.0.0.1:{self.port}"
@@ -77,6 +82,10 @@ class Server:
             return 0.0
         out = subprocess.run(["ps", "-o", "%cpu=", "-p", str(self.proc.pid)], capture_output=True, text=True).stdout.strip()
         return float(out or 0)
+
+    def log(self):
+        self._log.flush()
+        return self.log_path.read_text()
 
     def stop(self):
         self.proc.terminate()
