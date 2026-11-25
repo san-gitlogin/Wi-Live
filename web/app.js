@@ -342,15 +342,22 @@
         const at = c => px[((BLOCK >> 1) * cv.width + c * BLOCK + (BLOCK >> 1)) * 4] > 128;
         if (at(0) && !at(BITS + 1)) {
           let v = 0; for (let c = 1; c <= BITS; c++) v = (v * 2) + (at(c) ? 1 : 0);
-          const shown = (performance.timeOrigin + meta.expectedDisplayTime) % 4294967296;
+          // The wall clock now, moved to the frame's display time. Not timeOrigin +
+          // expectedDisplayTime: timeOrigin drifts from the wall clock while a page
+          // stays open (seen: frames "shown" 4 ms before they arrived).
+          const wallNow = Date.now(), perfNow = performance.now();
+          // Never before the frame was decoded: headless Chrome sometimes names an
+          // earlier vsync as the display time, which would under-report.
+          const decoded = meta.receiveTime ? meta.receiveTime + (meta.processingDuration || 0) * 1000 : 0;
+          const shown = (wallNow + (Math.max(meta.expectedDisplayTime, decoded) - perfNow)) % 4294967296;
           let d = shown - v; if (d < -2147483648) d += 4294967296;
           if (d > -50 && d < 10000) {
             samples.push(d);
             // Where the time went: to the last packet arriving, decoding, then display.
             if (meta.receiveTime) {
-              const rx = ((performance.timeOrigin + meta.receiveTime) % 4294967296) - v;
+              const rx = ((wallNow + (meta.receiveTime - perfNow)) % 4294967296) - v;
               parts.push([Math.round(rx < -2147483648 ? rx + 4294967296 : rx), Math.round((meta.processingDuration || 0) * 1000),
-                          Math.round(meta.expectedDisplayTime - meta.receiveTime - (meta.processingDuration || 0) * 1000)]);
+                          Math.round(Math.max(0, meta.expectedDisplayTime - decoded))]);
               if (parts.length > 3000) parts.splice(0, parts.length - 3000);
             }
           } else bad++;

@@ -72,8 +72,8 @@ with sync_playwright() as p:
         const m = at(0);
         if (m[0] > 200 && m[1] < 70 && m[2] > 200) {
           let t = 0; for (let c = 1; c <= 32; c++) t = t * 2 + (at(c)[1] > 128 ? 1 : 0);
-          let dt = (performance.timeOrigin + meta.expectedDisplayTime) % 4294967296 - t; if (dt < -2147483648) dt += 4294967296;
-          if (dt > -20 && dt < 5000) { samples.push(dt); if (meta.receiveTime) parts.push((performance.timeOrigin + meta.receiveTime) % 4294967296 - t); } else bad++;
+          const wn = Date.now(), pn = performance.now(); let dt = (wn + meta.expectedDisplayTime - pn) % 4294967296 - t; if (dt < -2147483648) dt += 4294967296;
+          if (dt > -20 && dt < 5000) { samples.push(dt); if (meta.receiveTime) parts.push((wn + meta.receiveTime - pn) % 4294967296 - t); } else bad++;
         } else bad++;
         v.requestVideoFrameCallback((n, mm) => on(mm));
       };

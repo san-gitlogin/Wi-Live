@@ -69,3 +69,17 @@ What remains is where a frame lands against the display's refresh (0 to 1 frame)
 which no sender can remove. The cost is that on a jittery link, frames are shown
 unevenly instead of late. If a viewer ever wants "smooth" over "now", it would
 become a per-viewer choice, never the default.
+
+### D-07, corrected (2026-11-26): the probe's clock, and every display phase
+
+Two measurement faults, found because a run reported frames shown before they
+arrived. (1) `performance.timeOrigin` drifts from the wall clock while a page stays
+open; the probe now reads the wall clock at each frame. (2) Headless Chrome sometimes
+names an earlier refresh as a frame's display time; a frame now counts as shown no
+earlier than its decode finished. And at 60 fps on a 60 Hz display the frame-to-refresh
+alignment is fixed for a whole run, so each run measured one random phase (1080p p50
+anywhere from 22 to 39 ms). The gate now runs at 59 fps, sweeping every phase each second.
+
+Honest figures (loopback, 4 runs): 1080p p50 19-20 ms, p99 27-28.5 ms. 720p: either
+p50 11-12 / p99 20 or p50 31-32 / p99 40-41 per run: some runs pay one extra compositor
+frame in headless Chrome. Open: find why (720p only, never 1080p).

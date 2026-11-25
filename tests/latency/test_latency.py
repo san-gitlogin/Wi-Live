@@ -45,9 +45,13 @@ def measure(chrome, server, label):
 
 @pytest.mark.parametrize("w,h", [(1280, 720), (1920, 1080)])
 def test_capture_to_present_latency_is_within_budget(chrome, make_server, w, h):
-    s = make_server(str(w), str(h), "60", WILIVE_CLOCK=1)
-    r = measure(chrome, s, f"{w}x{h}@60")
-    assert r["n"] >= MEASURE_S * 50, f"too few frames read: {r['n']} (bad {r['bad']})"
+    # 59 fps against a 60 Hz display: the frame-to-refresh alignment sweeps through
+    # every phase once a second, so p50 is the average wait and p99 the worst - not
+    # one random alignment per run (at 60 fps it is fixed for a whole run: 1080p
+    # p50 came out 22 to 39 ms from run to run).
+    s = make_server(str(w), str(h), "59", WILIVE_CLOCK=1)
+    r = measure(chrome, s, f"{w}x{h}@59")
+    assert r["n"] >= MEASURE_S * 48, f"too few frames read: {r['n']} (bad {r['bad']})"
     assert r["bad"] <= r["n"] * 0.02, f"{r['bad']} frames without a readable strip"
     assert r["min"] >= 0, f"a frame shown before it was made ({r['min']} ms): the strip is misread"
     assert r["p50"] <= P50_MS, f"p50 {r['p50']:.1f} ms > {P50_MS}"
