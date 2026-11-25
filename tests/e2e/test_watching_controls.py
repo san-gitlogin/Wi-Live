@@ -3,7 +3,7 @@ play on, the watchdog, every display at once (arranged and remembered), zoom,
 keyboard, the watermark. Plus the same viewer in WebKit, Safari's engine."""
 import pytest
 
-from support.pages import floor, OPEN, SOFTWARE, frames, owner_page, pair, viewer_page, wait
+from support.pages import floor, OPEN, SOFTWARE, frames, owner_page, pair, sizes_ok, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -131,6 +131,9 @@ def test_the_watermark_is_small_faint_and_never_in_the_way(chrome, server):
 
 def test_safari_engine_watches_and_plays_on_after_a_pause(pw, server):
     """WebKit (Safari's engine, via Playwright). Its H.264 and WebRTC are the OS's."""
+    import sys
+    if sys.platform == "win32":
+        pytest.skip("Playwright's WebKit for Windows has no WebRTC video (runs on macOS and Linux)")
     try:
         wk = pw.webkit.launch()
     except Exception as e:
@@ -143,7 +146,7 @@ def test_safari_engine_watches_and_plays_on_after_a_pause(pw, server):
         v.goto(server.base + "/")
         pair(o, v, "Safari")
         n = frames(v, 2)
-        assert n["n"] >= floor(20) and n["w"] == 1280, n
+        assert n["n"] >= floor(20) and sizes_ok(n["w"], n["h"], 1280, 720), n
         v.evaluate("() => document.getElementById('video').pause()")
         v.wait_for_timeout(400)
         assert v.evaluate("document.getElementById('video').paused") is False

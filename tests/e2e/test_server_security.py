@@ -117,12 +117,13 @@ def test_one_address_cannot_hold_every_connection(server):
     held = []
     for _ in range(24):
         held.append(socket.create_connection((LAN, server.port), timeout=5))
-    extra = socket.create_connection((LAN, server.port), timeout=5)
-    extra.sendall(f"GET /api/info HTTP/1.1\r\nHost: {LAN}\r\n\r\n".encode())
-    extra.settimeout(3)
+    # Refused shows as a close, a reset, or (Windows) an abort: all mean the same.
     try:
+        extra = socket.create_connection((LAN, server.port), timeout=5)
+        extra.sendall(f"GET /api/info HTTP/1.1\r\nHost: {LAN}\r\n\r\n".encode())
+        extra.settimeout(3)
         refused = extra.recv(64) == b""
-    except ConnectionResetError:
+    except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
         refused = True
     assert refused, "the 25th connection from one address is closed"
     assert server.http("GET", "/api/info")[0] == 200, "loopback (the owner's window) is not held up by it"

@@ -11,6 +11,9 @@ NOTCH = 47  # an iPhone's sensor housing in landscape, in CSS px
 
 @pytest.fixture
 def iphone(pw, server):
+    import sys
+    if sys.platform == "win32":
+        pytest.skip("Playwright's WebKit for Windows has no WebRTC video (runs on macOS and Linux)")
     try:
         wk = pw.webkit.launch()
     except Exception as e:
