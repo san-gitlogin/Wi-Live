@@ -250,6 +250,7 @@ pub fn owner_state(st: &State, urls: &[String]) -> serde_json::Value {
     let live: Vec<serde_json::Value> = lock(&st.live).iter().map(|l| l.view()).collect();
     serde_json::json!({
         "name": st.name, "version": VERSION, "urls": urls,
+        "qr": urls.iter().map(|u| crate::qr::data_uri(u).unwrap_or_default()).collect::<Vec<_>>(),
         "paused": st.paused.load(Ordering::Relaxed),
         "live": live,
         "pending": lock(&st.pending).views(st.ms()),

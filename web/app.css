@@ -140,3 +140,5 @@ body.watching { background: var(--stage); overflow: hidden; }
 .m0 { margin: 0; } .mb8 { margin: 0 0 8px; } .mt16 { margin-top: 16px; }
 .livefill { fill: var(--live); }
 .ask .title { font-weight: 600; font-size: 16px; }
+.where { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.qr { width: 148px; height: 148px; border-radius: 10px; border: 1px solid var(--line); background: #fff; image-rendering: pixelated; }

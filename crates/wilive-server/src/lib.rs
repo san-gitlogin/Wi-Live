@@ -10,6 +10,7 @@
 
 pub mod api;
 pub mod http;
+pub mod qr;
 pub mod signal;
 pub mod state;
 pub mod web;

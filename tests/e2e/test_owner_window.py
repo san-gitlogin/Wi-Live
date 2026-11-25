@@ -45,3 +45,17 @@ def test_the_window_counts_viewers_live_and_the_log_reads_as_sentences(chrome, s
     assert "Kitchen iPad" in stats and "fps" in stats and "sound" in stats
     first = o.text_content("#oLog .item")
     assert "Kitchen iPad started watching from 127.0.0.1" in first
+
+
+def test_the_qr_code_on_screen_decodes_to_the_address_shown(chrome, server):
+    """Read by an independent decoder (OpenCV) from the pixels the window shows."""
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+    o = owner_page(chrome, server)
+    o.wait_for_selector("#oUrls img.qr")
+    url = o.text_content("#oUrls a.url")
+    png = o.locator("#oUrls img.qr").first.screenshot()
+    img = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_COLOR)
+    img = cv2.resize(img, None, fx=3, fy=3, interpolation=cv2.INTER_NEAREST)
+    text, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
+    assert text == url, f"decoded {text!r}, shown {url!r}"

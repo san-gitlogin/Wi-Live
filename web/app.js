@@ -391,7 +391,9 @@
       el('div', { class: 'grow' }, el('div', { class: 'title', text: SW[k][0] }), el('div', { class: 'sub', text: SW[k][1] })),
       el('button', { class: 'switch', role: 'switch', type: 'button', 'data-switch': k, 'aria-checked': String(!!on), 'aria-label': SW[k][0], onclick: () => act('/api/owner/switch', { name: k, on: !on }) }))));
     // where to open
-    $('oUrls').replaceChildren(...(s.urls.length ? s.urls.map(u => el('div', {}, el('a', { class: 'url', href: u, text: u, target: '_blank', rel: 'noopener' })))
+    $('oUrls').replaceChildren(...(s.urls.length ? s.urls.map((u, i) => el('div', { class: 'where' },
+        s.qr && s.qr[i] ? el('img', { class: 'qr', src: s.qr[i], alt: 'QR code for ' + u, width: '148', height: '148' }) : null,
+        el('div', {}, el('a', { class: 'url', href: u, text: u, target: '_blank', rel: 'noopener' }), el('p', { class: 'note', text: 'Or point a phone\'s camera at the code.' }))))
       : [el('div', { class: 'msg', text: 'This computer is not on a home network right now.' })]));
     // devices
     $('oDevList').replaceChildren(...(s.devices.length ? s.devices.map(d => el('li', { class: 'item', 'data-dev': d.id },
