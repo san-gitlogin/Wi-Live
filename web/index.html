@@ -8,6 +8,12 @@
 <meta name="theme-color" content="#0F0C0C" media="(prefers-color-scheme: dark)">
 <title>Wi-Live</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-256.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wi-Live">
 <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/app.css">
 <script src="/crypto.js" defer></script>
@@ -20,6 +26,13 @@
     <symbol id="i-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6"/></symbol>
     <symbol id="i-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-unfull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16M14 12h7"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-keys" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h1M10 10h1M14 10h1M18 10h0M7 14h10"/></symbol>
     <symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 12h8M8 12l2-2M8 12l2 2M16 12l-2-2M16 12l-2 2"/></symbol>
     <symbol id="i-stats" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></symbol>
@@ -53,16 +66,45 @@
 <!-- Viewer: watching -->
 <main id="vWatch" hidden>
   <div class="stage" id="stage" data-fit="fit"><video id="video" playsinline autoplay muted></video></div>
+  <div class="wall" id="wall" data-layout="grid" data-fit="fit" hidden></div>
+  <div class="mark" aria-hidden="true"><svg><use href="#i-logo"/></svg><span>Wi-Live</span></div>
   <div class="overlay" id="overlay"><div class="msg stack"><div id="overlayMsg">Connecting...</div><button class="btn primary" id="btnAgain" type="button" hidden>Watch again</button></div></div>
   <div class="bar" id="bar">
-    <span class="chip live" id="liveChip"><span class="dot"></span>Live</span>
+    <span class="chip live" id="liveChip"><span class="dot"></span><span class="label">Live</span></span>
     <span class="name pcname"></span>
     <span class="spacer"></span>
     <select id="displaySel" aria-label="Display" hidden></select>
-    <button class="btn" id="btnSound" type="button" aria-pressed="false" aria-label="Sound" hidden><svg><use href="#i-mute"/></svg><span class="label">Sound</span></button>
-    <button class="btn" id="btnFit" type="button" aria-label="Fit"><svg><use href="#i-fit"/></svg><span class="label" id="fitTx">Fit</span></button>
-    <button class="btn" id="btnStats" type="button" aria-pressed="false" aria-label="Stats"><svg><use href="#i-stats"/></svg></button>
-    <button class="btn" id="btnFull" type="button" aria-label="Full screen"><svg><use href="#i-full"/></svg></button>
+    <button class="btn" id="btnWall" type="button" aria-pressed="false" aria-label="All displays" title="All displays (A)" hidden><svg><use href="#i-grid"/></svg><span class="label">All displays</span></button>
+    <button class="btn" id="btnLayout" type="button" aria-label="Layout" title="Layout (L)" hidden><svg><use href="#i-layout"/></svg><span class="label" id="layoutTx">Grid</span></button>
+    <button class="btn" id="btnSound" type="button" aria-pressed="false" aria-label="Sound" title="Sound (M)" hidden><svg><use href="#i-mute"/></svg><span class="label">Sound</span></button>
+    <button class="btn" id="btnFit" type="button" aria-label="Fit" title="Fit or fill"><svg><use href="#i-fit"/></svg><span class="label" id="fitTx">Fit</span></button>
+    <button class="btn" id="btnFull" type="button" aria-pressed="false" aria-label="Full screen" title="Full screen (F)"><svg><use href="#i-full"/></svg></button>
+    <button class="btn" id="btnMore" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More" title="More"><svg><use href="#i-more"/></svg></button>
+  </div>
+  <div class="menu" id="moreMenu" role="menu" hidden>
+    <button class="mi narrow-only" id="mFit" role="menuitem" type="button"><svg><use href="#i-fit"/></svg>Fit or fill the screen</button>
+    <button class="mi" id="mPip" role="menuitem" type="button"><svg><use href="#i-pip"/></svg>Picture in picture<kbd>P</kbd></button>
+    <button class="mi" id="mShot" role="menuitem" type="button"><svg><use href="#i-camera"/></svg>Save a snapshot<kbd>C</kbd></button>
+    <button class="mi" id="mStats" role="menuitem" type="button"><svg><use href="#i-stats"/></svg>Show stats<kbd>S</kbd></button>
+    <button class="mi" id="mKeys" role="menuitem" type="button"><svg><use href="#i-keys"/></svg>Keyboard shortcuts<kbd>?</kbd></button>
+  </div>
+  <button class="chip zoom" id="zoomChip" type="button" title="Back to 100% (0)" hidden>100%</button>
+  <div class="sheet" id="helpSheet" role="dialog" aria-label="Keyboard shortcuts" hidden>
+    <div class="card stack">
+      <div class="card-head"><h2>Keyboard shortcuts</h2><span class="spacer"></span><button class="btn ghost small" id="btnHelpClose" type="button" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+      <dl class="keys">
+        <dt><kbd>F</kbd></dt><dd>Full screen</dd>
+        <dt><kbd>A</kbd></dt><dd>All displays at once</dd>
+        <dt><kbd>L</kbd></dt><dd>Change the layout</dd>
+        <dt><kbd>1</kbd>-<kbd>9</kbd></dt><dd>Watch that display</dd>
+        <dt><kbd>M</kbd></dt><dd>Sound on or off</dd>
+        <dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, back to 100%</dd>
+        <dt><kbd>P</kbd></dt><dd>Picture in picture</dd>
+        <dt><kbd>C</kbd></dt><dd>Save a snapshot</dd>
+        <dt><kbd>S</kbd></dt><dd>Stats</dd>
+      </dl>
+      <p class="note">On a touch screen: pinch to zoom, drag to look around, double-tap to zoom in or out. With all displays: drag a display onto another to swap them, double-tap one to make it the big one.</p>
+    </div>
   </div>
   <div class="hud" id="hud" hidden></div>
 </main>
@@ -77,7 +119,7 @@
     <button class="switch" id="oPause" role="switch" aria-checked="true" aria-label="Sharing on"></button>
   </header>
   <div class="msg err" id="oPausedMsg" role="status" hidden>Sharing is paused. Nobody can watch until you turn it back on.</div>
-  <section class="card notice" id="oPerm" hidden>
+  <section class="card" id="oPerm" hidden>
     <div class="row"><div class="grow"><h3>Allow screen recording</h3><p class="note">Your computer asks once. Until then, devices can connect but see no picture.</p></div>
     <button class="btn primary" id="oPermBtn" type="button">Allow</button></div>
   </section>

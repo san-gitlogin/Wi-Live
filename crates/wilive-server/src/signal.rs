@@ -32,7 +32,8 @@ use wilive_stream::display::{self, Display};
 use wilive_stream::pipeline::{Pipeline, ToViewer, MAIN};
 use wilive_stream::rtc::{self, DtlsCert, End, ToSession};
 
-pub const MAX_VIEWERS: usize = 6;
+/// Sessions, not devices: a device watching all four displays at once holds four.
+pub const MAX_VIEWERS: usize = 16;
 pub const HELLO_DEADLINE: Duration = Duration::from_secs(5);
 pub const OFFER_DEADLINE: Duration = Duration::from_secs(10);
 pub const MAX_MESSAGE: usize = 64 * 1024;

@@ -117,7 +117,12 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // ================= viewer: watching =================
-  let session = null, retry = 0, retryTimer = 0;
+  // A view is one display in one <video>, over its own signaling session. One view
+  // fills the stage; "All displays" makes a wall of them, one per display, arranged
+  // as the viewer likes (layout and order kept per device).
+  const WALL_KEY = 'wilive.wall.v1';
+  let main = null, wall = [], retry = 0, retryTimer = 0, displayList = [], wallOn = false;
+  const views = () => (wallOn ? wall : main ? [main] : []);
   function overlay(t, again) { $('overlayMsg').textContent = t || ''; $('overlay').hidden = !t; $('btnAgain').hidden = !again; }
   const REASONS = {
     paused: () => 'Sharing is paused on ' + info.name + '. It starts again when they turn it on.',
@@ -128,55 +133,78 @@
     fingerprint: () => 'This does not look like ' + info.name + '. Stopped for your safety.',
     blocked: () => 'Too many wrong tries came from this device. Try again in 10 minutes.',
   };
+  function stopAll(r) { for (const v of wall) v.stop(r); wall = []; if (main) main.stop(r); main = null; }
   function watch() {
     const dev = store.get();
     if (!dev) return startPairUI();
     show('vWatch'); note('connecting');
     overlay('Connecting to ' + info.name + '...');
     clearTimeout(retryTimer);
-    if (session) session.stop('restart');
-    session = connect(dev);
+    stopAll('restart');
+    if (wallOn && displayList.length > 1) return buildWall(dev);
+    wallOn = false; $('wall').hidden = true; $('stage').hidden = false;
+    main = connect(dev, { video: $('video'), primary: true, display: T.wantDisplay });
   }
   function again(reason) {
     const wait = Math.min(8000, 500 * Math.pow(2, retry++));
-    const why = REASONS[reason] ? REASONS[reason]() : 'Connection lost. Reconnecting...';
-    overlay(why);
+    overlay(REASONS[reason] ? REASONS[reason]() : 'Connection lost. Reconnecting...');
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => { if (!document.hidden) watch(); else again(reason); }, reason === 'paused' ? 5000 : reason === 'blocked' ? 60000 : wait);
   }
   function fpOf(sdp) { const m = /a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/.exec(sdp); return m ? m[1].replace(/:/g, '').toLowerCase() : ''; }
 
-  function connect(dev) {
-    const W = WLC, key = W.unhex(dev.key);
+  // A live stream must never stay paused: Safari pauses on leaving its player,
+  // picture-in-picture and background tabs; this undoes every one of them.
+  function keepPlaying(video) {
+    if (video && video.srcObject && video.paused) video.play().catch(() => {});
+  }
+  function wireVideo(video) {
+    video.addEventListener('pause', () => setTimeout(() => keepPlaying(video), 0));
+    video.addEventListener('webkitendfullscreen', () => keepPlaying(video));
+    video.addEventListener('leavepictureinpicture', () => keepPlaying(video));
+    video.addEventListener('webkitpresentationmodechanged', () => keepPlaying(video));
+  }
+
+  function connect(dev, o) {
+    const W = WLC, key = W.unhex(dev.key), video = o.video, primary = !!o.primary;
     let ws, pc, done = false, live = false, chal = '', fp = '';
-    const video = $('video');
-    const statsTimer = setInterval(() => stats(pc), 1000);
+    const me = { video, display: o.display, live: false, state: 'connecting', shown: performance.now(), stats: null, last: null, stuck: 0 };
+    const say = s => { me.state = s; if (primary) note(s); if (o.onState) o.onState(s); };
+    // Every presented frame, for the watchdog.
+    const onFrame = () => { me.shown = performance.now(); me.stuck = 0; if (!done && video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame); };
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame);
+    const statsTimer = setInterval(() => tick(me, pc, send), 1000);
     const end = (reason, retryIt) => {
       if (done) return; done = true;
       clearInterval(statsTimer);
       try { ws && ws.readyState === 1 && ws.send(JSON.stringify({ t: 'bye' })); } catch (e) {}
       try { ws && ws.close(); } catch (e) {}
       try { pc && pc.close(); } catch (e) {}
+      // Let go of the stream: no stale last frame, no decoder kept for nothing.
+      if (video.srcObject) { video.srcObject = null; }
+      me.live = false;
+      say('end:' + reason);
+      if (!primary) { if (retryIt && !['restart', 'stopped'].includes(reason)) me.retry = setTimeout(() => o.restart && o.restart(), 1500); return; }
       $('liveChip').hidden = true;
-      note('end:' + reason);
-      if (reason === 'device' || reason === 'forgotten') { store.clear(); startPairUI(); pairErr(reason === 'forgotten' ? 'This device was removed on the computer. Ask again to watch.' : 'This device is no longer allowed. Ask again to watch.'); return; }
-      if (reason === 'fingerprint') { overlay(REASONS.fingerprint(), true); return; }
+      if (reason === 'restart' || reason === 'stopped') return;
+      if (reason === 'device' || reason === 'forgotten') { stopAll('stopped'); store.clear(); startPairUI(); pairErr(reason === 'forgotten' ? 'This device was removed on the computer. Ask again to watch.' : 'This device is no longer allowed. Ask again to watch.'); return; }
+      if (reason === 'fingerprint') { stopAll('stopped'); overlay(REASONS.fingerprint(), true); return; }
       // Ended by the owner: never back on its own, or "End" would mean nothing.
-      if (reason === 'ended') { session = null; overlay(REASONS.ended(), true); return; }
+      if (reason === 'ended') { stopAll('stopped'); overlay(REASONS.ended(), true); return; }
       if (retryIt) again(reason);
     };
     const opened = setTimeout(() => { if (!live) end('timeout', true); }, 12000);
     try { ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/v1/signal'); }
-    catch (e) { end('unreachable', true); return { stop() {} }; }
+    catch (e) { end('unreachable', true); return { stop() {}, send() {} }; }
     ws.onclose = () => { clearTimeout(opened); end(live ? 'closed' : 'unreachable', true); };
     ws.onmessage = async ev => {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.t === 'chal') { chal = String(m.c || ''); ws.send(JSON.stringify({ t: 'hello', id: dev.id, mac: W.hex(W.helloMac(key, dev.id, chal)) })); return; }
       if (m.t === 'error') return end(m.reason || 'error', !['device', 'fingerprint'].includes(m.reason));
       if (m.t === 'end') return end(m.reason || 'ended', !['forgotten', 'ended'].includes(m.reason));
-      if (m.t === 'stats') { T.fps = m.fps | 0; return; }
-      if (m.t === 'displays') return displays(m.displays || [], m.display);
-      if (m.t === 'display') { $('displaySel').value = String(m.id); return; }
+      if (m.t === 'stats') { me.fps = m.fps | 0; if (primary) T.fps = me.fps; return; }
+      if (m.t === 'displays') { if (primary) displays(m.displays || [], m.display); return; }
+      if (m.t === 'display') { me.display = m.id; if (primary && !wallOn) $('displaySel').value = String(m.id); return; }
       if (m.t === 'ready') {
         // The fingerprint comes with a proof made with this device's key: a page
         // or reply swapped on the way cannot pass off another computer's media.
@@ -184,10 +212,12 @@
         if (!/^[0-9a-f]{64}$/.test(m.fp || '') || !W.same(proof, W.fpMac(key, chal, m.fp))) return end('fingerprint', false);
         fp = m.fp;
         if (m.name) { info.name = m.name; setName(m.name); }
-        displays(m.displays || [], m.display);
+        if (primary) displays(m.displays || [], o.display != null ? o.display : m.display);
+        if (o.display != null && o.display !== m.display) ws.send(JSON.stringify({ t: 'display', id: o.display }));
         pc = new RTCPeerConnection({ iceServers: [] });
         const tr = pc.addTransceiver('video', { direction: 'recvonly' });
-        if (m.audio && (m.audio.system === 'on' || m.audio.mic === 'on')) pc.addTransceiver('audio', { direction: 'recvonly' });
+        // Sound once per device: only the first view asks for it.
+        if (primary && m.audio && (m.audio.system === 'on' || m.audio.mic === 'on')) pc.addTransceiver('audio', { direction: 'recvonly' });
         try {
           const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
           if (caps && tr.setCodecPreferences) {
@@ -202,12 +232,12 @@
           ms.addTrack(e.track);
           if (e.track.kind === 'audio') $('btnSound').hidden = false;
           if (video.srcObject !== ms) video.srcObject = ms;
-          video.play().catch(() => {});
+          keepPlaying(video);
         };
         pc.onconnectionstatechange = () => {
           const s = pc.connectionState;
-          if (s === 'connected') { live = true; retry = 0; clearTimeout(opened); overlay(''); $('liveChip').hidden = false; note('live'); }
-          else if (s === 'disconnected') overlay('Connection unsteady...');
+          if (s === 'connected') { live = true; me.live = true; if (primary) { retry = 0; overlay(''); $('liveChip').hidden = false; } clearTimeout(opened); say('live'); }
+          else if (s === 'disconnected') { if (primary) overlay('Connection unsteady...'); }
           else if (s === 'failed') end('network', true);
         };
         const offer = await pc.createOffer();
@@ -220,49 +250,64 @@
         try { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); } catch (e) { end('answer', true); }
       }
     };
-    const send = o => { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(o)); } catch (e) {} };
-    T.send = send;
-    return { stop(r) { end(r || 'stopped', false); }, send };
+    const send = o2 => { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(o2)); } catch (e) {} };
+    me.stop = r => end(r || 'stopped', false);
+    me.send = send;
+    me.heal = () => { if (!done) { end('restart', false); if (o.restart) o.restart(); } };
+    if (primary) T.send = send;
+    return me;
   }
 
   function displays(list, current) {
+    displayList = list;
     const sel = $('displaySel');
     sel.textContent = '';
-    for (const d of list) sel.append(el('option', { value: String(d.id), text: d.name || ('Display ' + d.id) + (d.width ? ' (' + d.width + 'x' + d.height + ')' : '') }));
+    for (const d of list) sel.append(el('option', { value: String(d.id), text: (d.name || 'Display ' + d.id) + (d.width ? ' (' + d.width + 'x' + d.height + ')' : '') }));
     if (current != null) sel.value = String(current);
     const d = list.find(x => x.id === current) || list[0];
     T.srcW = d && d.width ? d.width : 0;
-    sel.hidden = list.length < 2;
+    sel.hidden = list.length < 2 || wallOn;
+    $('btnWall').hidden = list.length < 2;
   }
 
-  // ----- stats: what the HUD shows and what the owner sees for this viewer -----
-  let last = null;
-  async function stats(pc) {
+  // ----- stats and the watchdog, once a second per view -----
+  async function tick(me, pc, send) {
+    keepPlaying(me.video);
     if (!pc) return;
     let rep; try { rep = await pc.getStats(); } catch (e) { return; }
     let v = null, pair = null;
     rep.forEach(s => { if (s.type === 'inbound-rtp' && s.kind === 'video') v = s; if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
     if (!v) return;
-    const now = performance.now();
-    const r = { t: now, bytes: v.bytesReceived || 0, frames: v.framesDecoded || 0, jb: v.jitterBufferDelay || 0, jbn: v.jitterBufferEmittedCount || 0, dec: v.totalDecodeTime || 0 };
+    const r = { t: performance.now(), bytes: v.bytesReceived || 0, frames: v.framesDecoded || 0, jb: v.jitterBufferDelay || 0, jbn: v.jitterBufferEmittedCount || 0, dec: v.totalDecodeTime || 0, w: v.frameWidth, h: v.frameHeight };
+    const last = me.last;
     if (last) {
       const dt = (r.t - last.t) / 1000, df = r.frames - last.frames, dn = r.jbn - last.jbn;
       const rtt = pair && pair.currentRoundTripTime ? pair.currentRoundTripTime * 1000 : 0;
       const jbMs = dn > 0 ? (r.jb - last.jb) / dn * 1000 : 0;
       const decMs = df > 0 ? (r.dec - last.dec) / df * 1000 : 0;
       const est = Math.round(rtt / 2 + jbMs + decMs);
-      T.stats = { fps: Math.round(df / dt), kbps: Math.round((r.bytes - last.bytes) * 8 / dt / 1000), w: v.frameWidth || 0, h: v.frameHeight || 0, rtt: Math.round(rtt), jb: Math.round(jbMs), dec: +decMs.toFixed(1), est };
-      if (!PROBE) session && session.send({ t: 'lat', p50: est, p99: est });
-      if (v.frameWidth && (!last.w || last.w !== v.frameWidth || last.h !== v.frameHeight)) session && session.send({ t: 'size', w: v.frameWidth, h: v.frameHeight });
-      r.w = v.frameWidth; r.h = v.frameHeight;
-      hud();
+      me.stats = { fps: Math.round(df / dt), kbps: Math.round((r.bytes - last.bytes) * 8 / dt / 1000), w: v.frameWidth || 0, h: v.frameHeight || 0, rtt: Math.round(rtt), jb: Math.round(jbMs), dec: +decMs.toFixed(1), est };
+      if (me === main || me === wall[0]) { T.stats = me.stats; hud(); }
+      if (!PROBE) send({ t: 'lat', p50: est, p99: est });
+      if (v.frameWidth && (last.w !== v.frameWidth || last.h !== v.frameHeight)) send({ t: 'size', w: v.frameWidth, h: v.frameHeight });
+      // The watchdog: frames decode but none is shown, or bytes arrive but nothing
+      // decodes. Ask for a keyframe; if that does not help, reconnect this view.
+      const quiet = performance.now() - me.shown;
+      const decoding = df > 0, arriving = r.bytes - last.bytes > 2000;
+      if (me.live && !document.hidden && quiet > 2500 && (decoding || arriving)) {
+        me.stuck++;
+        T.healed = (T.healed || 0) + 1;
+        if (me.stuck === 1) { send({ t: 'key' }); if (me.video.srcObject) { const s = me.video.srcObject; me.video.srcObject = null; me.video.srcObject = s; keepPlaying(me.video); } }
+        else if (me.stuck >= 4) me.heal();
+      }
     }
-    last = r;
+    me.last = r;
   }
   function hud() {
     const s = T.stats; if (!s || $('hud').hidden) return;
     let t = s.fps + ' fps  ' + s.w + 'x' + s.h + '  ' + (s.kbps / 1000).toFixed(1) + ' Mb/s  ~' + s.est + ' ms';
     if (T.lat) t += '  p50 ' + T.lat.p50 + ' p99 ' + T.lat.p99;
+    if (wallOn) t += '  ' + wall.length + ' displays';
     $('hud').textContent = t;
   }
 
@@ -307,33 +352,279 @@
       if (samples.length < 10) return;
       const s = samples.slice().sort((a, b) => a - b), q = p => Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]);
       T.lat = { n: s.length, p50: q(.5), p95: q(.95), p99: q(.99), max: Math.round(s[s.length - 1]) };
-      session && session.send({ t: 'lat', p50: T.lat.p50, p99: T.lat.p99 });
+      main && main.send({ t: 'lat', p50: T.lat.p50, p99: T.lat.p99 });
       hud();
     }, 1000);
   }
 
-  // ----- the bar: fades while watching, back on any touch or move -----
+  // ----- the wall: every display at once, arranged like monitors on a desk -----
+  const LAYOUTS = ['grid', 'row', 'column', 'focus'], LAYOUT_NAMES = { grid: 'Grid', row: 'Row', column: 'Column', focus: 'Focus' };
+  function wallPrefs() {
+    try { const p = JSON.parse(localStorage.getItem(WALL_KEY) || '{}'); return { layout: LAYOUTS.includes(p.layout) ? p.layout : 'grid', order: Array.isArray(p.order) ? p.order.map(Number) : [] }; }
+    catch (e) { return { layout: 'grid', order: [] }; }
+  }
+  function saveWall(p) { try { localStorage.setItem(WALL_KEY, JSON.stringify(p)); } catch (e) {} }
+  function orderedDisplays() {
+    const p = wallPrefs(), ids = displayList.map(d => d.id);
+    const order = p.order.filter(id => ids.includes(id)).concat(ids.filter(id => !p.order.includes(id)));
+    return order.map(id => displayList.find(d => d.id === id));
+  }
+  function applyLayout() {
+    const p = wallPrefs(), w = $('wall');
+    w.dataset.layout = p.layout;
+    w.style.setProperty('--n', String(wall.length || 1));
+    w.style.setProperty('--cols', String(Math.ceil(Math.sqrt(wall.length || 1))));
+    $('layoutTx').textContent = LAYOUT_NAMES[p.layout];
+    shapeScreens();
+  }
+  // Each screen as large as its cell allows, in its display's aspect.
+  function shapeScreens() {
+    for (const t of $('wall').children) {
+      const sc = t.firstChild, ar = Number(t.dataset.ar) || 16 / 9, w = t.clientWidth, h = t.clientHeight;
+      if (!w || !h) continue;
+      const fill = $('wall').dataset.fit === 'fill';
+      const sw = fill ? w : Math.min(w, h * ar), sh = fill ? h : Math.min(h, w / ar);
+      sc.style.width = Math.floor(sw) + 'px'; sc.style.height = Math.floor(sh) + 'px';
+    }
+  }
+  function buildWall(dev) {
+    wallOn = true;
+    $('stage').hidden = true; $('wall').hidden = false; $('displaySel').hidden = true; $('btnLayout').hidden = false;
+    $('btnWall').setAttribute('aria-pressed', 'true');
+    const box = $('wall');
+    box.textContent = '';
+    wall = [];
+    orderedDisplays().forEach((d, i) => {
+      const video = el('video', { playsinline: '', autoplay: '', muted: '' });
+      video.muted = true;
+      wireVideo(video);
+      // The tile is the cell; the screen inside it has the display's own shape.
+      const screen = el('div', { class: 'screen' }, video, el('span', { class: 'tile-name', text: d.name || 'Display ' + d.id }), el('span', { class: 'tile-state', text: 'Connecting...' }));
+      const tile = el('div', { class: 'tile', tabindex: '0', 'data-display': String(d.id), 'data-ar': String(d.width && d.height ? d.width / d.height : 16 / 9), 'aria-label': d.name || 'Display ' + d.id }, screen);
+      box.append(tile);
+      const make = () => connect(dev, { video, display: d.id, primary: i === 0, onState: s => {
+        tile.querySelector('.tile-state').textContent = s === 'live' ? '' : s.startsWith('end:') ? 'Reconnecting...' : 'Connecting...';
+        tile.classList.toggle('live', s === 'live');
+      }, restart: () => { const k = wall.indexOf(view); if (k >= 0 && wallOn) { view = make(); wall[k] = view; } } });
+      let view = make();
+      wall.push(view);
+      wireTile(tile);
+    });
+    applyLayout();
+    requestAnimationFrame(shapeScreens);
+    note('wall');
+  }
+  function leaveWall() {
+    const first = wall[0] && wall[0].display;
+    wallOn = false;
+    $('btnWall').setAttribute('aria-pressed', 'false'); $('btnLayout').hidden = true;
+    for (const v of wall) v.stop('stopped');
+    wall = []; $('wall').textContent = ''; $('wall').hidden = true;
+    T.wantDisplay = first;
+    watch();
+  }
+  function moveTile(from, to) {
+    const p = wallPrefs(), ids = [...$('wall').children].map(t => Number(t.dataset.display));
+    const [x] = ids.splice(from, 1); ids.splice(to, 0, x);
+    p.order = ids; saveWall(p);
+    const tiles = [...$('wall').children], t = tiles[from];
+    $('wall').insertBefore(t, to > from ? tiles[to].nextSibling : tiles[to]);
+    const [v] = wall.splice(from, 1); wall.splice(to, 0, v);
+    applyLayout();
+  }
+  function focusTile(tile) {
+    const tiles = [...$('wall').children], i = tiles.indexOf(tile), p = wallPrefs();
+    if (p.layout === 'focus' && i === 0) { p.layout = 'grid'; saveWall(p); applyLayout(); return; }
+    if (i > 0) moveTile(i, 0);
+    const q = wallPrefs(); q.layout = 'focus'; saveWall(q); applyLayout();
+  }
+  // Drag a tile onto another to swap places; double-tap makes it the big one;
+  // arrow keys move a focused tile.
+  function wireTile(tile) {
+    let start = null, ghost = false, lastTap = 0;
+    tile.addEventListener('pointerdown', e => { if (e.button !== 0) return; start = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
+    tile.addEventListener('pointermove', e => {
+      if (!start || e.pointerId !== start.id) return;
+      if (!ghost && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) { ghost = true; tile.classList.add('dragging'); tile.setPointerCapture(e.pointerId); }
+      if (ghost) {
+        tile.style.transform = 'translate(' + (e.clientX - start.x) + 'px,' + (e.clientY - start.y) + 'px)';
+        for (const t of $('wall').children) t.classList.toggle('drop', t !== tile && hit(t, e));
+      }
+    });
+    const up = e => {
+      if (!start) return;
+      if (ghost) {
+        const tiles = [...$('wall').children], target = tiles.find(t => t !== tile && hit(t, e));
+        tile.classList.remove('dragging'); tile.style.transform = '';
+        for (const t of tiles) t.classList.remove('drop');
+        if (target) moveTile(tiles.indexOf(tile), tiles.indexOf(target));
+      } else {
+        const now = Date.now();
+        if (now - lastTap < 350) { focusTile(tile); lastTap = 0; } else lastTap = now;
+      }
+      start = null; ghost = false;
+    };
+    tile.addEventListener('pointerup', up);
+    tile.addEventListener('pointercancel', () => { start = null; ghost = false; tile.classList.remove('dragging'); tile.style.transform = ''; });
+    tile.addEventListener('keydown', e => {
+      const tiles = [...$('wall').children], i = tiles.indexOf(tile);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { if (i < tiles.length - 1) { moveTile(i, i + 1); tile.focus(); } e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { if (i > 0) { moveTile(i, i - 1); tile.focus(); } e.preventDefault(); }
+      else if (e.key === 'Enter') { focusTile(tile); e.preventDefault(); }
+    });
+  }
+  function hit(t, e) { const r = t.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; }
+
+  // ----- zoom and pan on the single view: pinch, Ctrl/Cmd + wheel, drag, double-click -----
+  const zoom = { s: 1, x: 0, y: 0 };
+  function setZoom(s, cx, cy) {
+    const st = $('stage').getBoundingClientRect();
+    s = Math.min(8, Math.max(1, s));
+    if (cx == null) { cx = st.width / 2; cy = st.height / 2; }
+    // Keep the point under the fingers where it is.
+    zoom.x = cx - (cx - zoom.x) * (s / zoom.s);
+    zoom.y = cy - (cy - zoom.y) * (s / zoom.s);
+    zoom.s = s;
+    clampZoom();
+  }
+  function clampZoom() {
+    const st = $('stage').getBoundingClientRect();
+    if (zoom.s <= 1.001) { zoom.s = 1; zoom.x = 0; zoom.y = 0; }
+    zoom.x = Math.min(0, Math.max(st.width - st.width * zoom.s, zoom.x));
+    zoom.y = Math.min(0, Math.max(st.height - st.height * zoom.s, zoom.y));
+    $('video').style.transform = zoom.s === 1 ? '' : 'translate(' + zoom.x + 'px,' + zoom.y + 'px) scale(' + zoom.s + ')';
+    $('zoomChip').hidden = zoom.s === 1;
+    $('zoomChip').textContent = Math.round(zoom.s * 100) + '%';
+    $('stage').classList.toggle('zoomed', zoom.s > 1);
+  }
+  function wireZoom() {
+    const st = $('stage'), pts = new Map();
+    let pinch = null, pan = null, lastTap = 0;
+    st.addEventListener('wheel', e => {
+      if (!(e.ctrlKey || e.metaKey) && zoom.s === 1) return;
+      e.preventDefault();
+      const r = st.getBoundingClientRect();
+      if (e.ctrlKey || e.metaKey) setZoom(zoom.s * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+      else { zoom.x -= e.deltaX; zoom.y -= e.deltaY; clampZoom(); }
+    }, { passive: false });
+    st.addEventListener('pointerdown', e => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: zoom.s }; pan = null; }
+      else if (pts.size === 1 && zoom.s > 1) pan = { x: e.clientX, y: e.clientY, zx: zoom.x, zy: zoom.y };
+      const now = Date.now();
+      if (pts.size === 1) { if (now - lastTap < 300) { const r = st.getBoundingClientRect(); setZoom(zoom.s > 1 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top); lastTap = 0; } else lastTap = now; }
+    });
+    st.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const r = st.getBoundingClientRect();
+      if (pinch && pts.size === 2) { const [a, b] = [...pts.values()]; setZoom(pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top); }
+      else if (pan) { zoom.x = pan.zx + e.clientX - pan.x; zoom.y = pan.zy + e.clientY - pan.y; clampZoom(); }
+    });
+    const lift = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) pan = null; };
+    st.addEventListener('pointerup', lift); st.addEventListener('pointercancel', lift);
+    $('zoomChip').addEventListener('click', () => setZoom(1));
+    addEventListener('resize', () => { clampZoom(); if (wallOn) shapeScreens(); });
+  }
+
+  // ----- full screen: the page itself, never the browser's own video player -----
+  function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement) || document.body.classList.contains('immersive'); }
+  function toggleFull() {
+    const d = document, root = d.documentElement;
+    if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+    if (d.body.classList.contains('immersive')) { d.body.classList.remove('immersive'); fullChanged(); return; }
+    const req = root.requestFullscreen || root.webkitRequestFullscreen;
+    if (req) { try { const p = req.call(root, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => immersive()); } catch (e) { immersive(); } }
+    else immersive();   // iPhone: no page full screen; the bar hides and the picture fills the screen
+  }
+  function immersive() { document.body.classList.add('immersive'); fullChanged(); }
+  function fullChanged() {
+    $('btnFull').setAttribute('aria-pressed', String(isFull()));
+    $('btnFull').querySelector('use').setAttribute('href', isFull() ? '#i-unfull' : '#i-full');
+    // Leaving or entering full screen must never stop the picture.
+    for (const v of views()) { keepPlaying(v.video); v.send({ t: 'key' }); }
+    clampZoom();
+    note(T.state);
+  }
+
+  // ----- more: picture-in-picture, snapshot, stats, shortcuts -----
+  function pip() {
+    const v = wallOn && wall[0] ? wall[0].video : $('video');
+    if (document.pictureInPictureElement) return document.exitPictureInPicture().catch(() => {});
+    if (v.requestPictureInPicture) return v.requestPictureInPicture().catch(() => {});
+    if (v.webkitSetPresentationMode) v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+  }
+  function snapshot() {
+    const v = wallOn && wall[0] ? wall[0].video : $('video');
+    if (!v.videoWidth) return;
+    const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    c.toBlob(b => {
+      if (!b) return;
+      const a = el('a', { href: URL.createObjectURL(b), download: (info.name || 'Wi-Live') + ' ' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.png' });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, 'image/png');
+  }
+  function toggleStats() { const h = $('hud'); h.hidden = !h.hidden; hud(); }
+  function toggleSound() {
+    const v = wallOn && wall[0] ? wall[0].video : $('video');
+    v.muted = !v.muted; keepPlaying(v);
+    $('btnSound').setAttribute('aria-pressed', String(!v.muted));
+    $('btnSound').querySelector('use').setAttribute('href', v.muted ? '#i-mute' : '#i-sound');
+  }
+  function cycleLayout() { const p = wallPrefs(); p.layout = LAYOUTS[(LAYOUTS.indexOf(p.layout) + 1) % LAYOUTS.length]; saveWall(p); applyLayout(); }
+  function menu(open) { const m = $('moreMenu'); m.hidden = open === undefined ? !m.hidden : !open; $('btnMore').setAttribute('aria-expanded', String(!m.hidden)); }
+
+  // ----- the bar: fades while watching, back on any touch, move or key -----
   let fadeTimer = 0;
-  function wake() { $('bar').classList.remove('faded'); clearTimeout(fadeTimer); fadeTimer = setTimeout(() => { if (!$('overlay').hidden) return; $('bar').classList.add('faded'); }, 3000); }
+  function wake() { $('bar').classList.remove('faded'); clearTimeout(fadeTimer); fadeTimer = setTimeout(() => { if (!$('overlay').hidden || !$('moreMenu').hidden || !$('helpSheet').hidden) return; $('bar').classList.add('faded'); }, 3000); }
   function wireWatch() {
+    wireVideo($('video'));
+    wireZoom();
     for (const e of ['pointermove', 'pointerdown', 'keydown']) document.addEventListener(e, () => { if (!$('vWatch').hidden) wake(); }, { passive: true });
-    const fits = ['fit', 'fill', 'actual'], names = { fit: 'Fit', fill: 'Fill', actual: '1:1' };
-    $('btnFit').addEventListener('click', () => { const s = $('stage'); const n = fits[(fits.indexOf(s.dataset.fit) + 1) % fits.length]; s.dataset.fit = n; $('fitTx').textContent = names[n]; });
-    $('btnFull').addEventListener('click', () => {
-      const d = document, v = $('video');
-      if (d.fullscreenElement) return d.exitFullscreen().catch(() => {});
-      if (d.documentElement.requestFullscreen) d.documentElement.requestFullscreen().catch(() => {});
-      else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
-    });
-    $('btnSound').addEventListener('click', () => {
-      const v = $('video'); v.muted = !v.muted; v.play().catch(() => {});
-      $('btnSound').setAttribute('aria-pressed', String(!v.muted));
-      $('btnSound').querySelector('use').setAttribute('href', v.muted ? '#i-mute' : '#i-sound');
-    });
-    $('btnStats').addEventListener('click', () => { const h = $('hud'); h.hidden = !h.hidden; $('btnStats').setAttribute('aria-pressed', String(!h.hidden)); hud(); });
+    const fits = ['fit', 'fill'], names = { fit: 'Fit', fill: 'Fill' };
+    $('btnFit').addEventListener('click', () => { const s = $('stage'); const n = fits[(fits.indexOf(s.dataset.fit) + 1) % fits.length]; s.dataset.fit = n; $('wall').dataset.fit = n; $('fitTx').textContent = names[n]; setZoom(1); if (wallOn) shapeScreens(); });
+    $('btnFull').addEventListener('click', toggleFull);
+    document.addEventListener('fullscreenchange', fullChanged);
+    document.addEventListener('webkitfullscreenchange', fullChanged);
+    $('btnSound').addEventListener('click', toggleSound);
+    $('btnWall').addEventListener('click', () => { if (wallOn) leaveWall(); else { wallOn = true; watch(); } });
+    $('btnLayout').addEventListener('click', cycleLayout);
+    $('btnMore').addEventListener('click', e => { e.stopPropagation(); menu(); });
+    document.addEventListener('click', e => { if (!$('moreMenu').hidden && !$('moreMenu').contains(e.target)) menu(false); });
+    $('mFit').addEventListener('click', () => { menu(false); $('btnFit').click(); });
+    $('mPip').addEventListener('click', () => { menu(false); pip(); });
+    $('mShot').addEventListener('click', () => { menu(false); snapshot(); });
+    $('mStats').addEventListener('click', () => { menu(false); toggleStats(); });
+    $('mKeys').addEventListener('click', () => { menu(false); $('helpSheet').hidden = false; });
+    $('btnHelpClose').addEventListener('click', () => { $('helpSheet').hidden = true; });
     $('btnAgain').addEventListener('click', () => { retry = 0; watch(); });
-    $('displaySel').addEventListener('change', e => session && session.send({ t: 'display', id: Number(e.target.value) }));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('vWatch').hidden && !session) watch(); });
+    $('displaySel').addEventListener('change', e => { T.wantDisplay = Number(e.target.value); main && main.send({ t: 'display', id: T.wantDisplay }); setZoom(1); });
+    if (!document.pictureInPictureEnabled && !('webkitSetPresentationMode' in HTMLVideoElement.prototype)) $('mPip').hidden = true;
+    // Keyboard: every control has a key (the sheet lists them).
+    document.addEventListener('keydown', e => {
+      if ($('vWatch').hidden || e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'f') toggleFull();
+      else if (k === 'm' && !$('btnSound').hidden) toggleSound();
+      else if (k === 'a' && displayList.length > 1) $('btnWall').click();
+      else if (k === 'l' && wallOn) cycleLayout();
+      else if (k === 's') toggleStats();
+      else if (k === 'p') pip();
+      else if (k === 'c') snapshot();
+      else if (k === '+' || k === '=') setZoom(zoom.s * 1.25);
+      else if (k === '-') setZoom(zoom.s / 1.25);
+      else if (k === '0') setZoom(1);
+      else if (k === '?') $('helpSheet').hidden = !$('helpSheet').hidden;
+      else if (k === 'escape') { menu(false); $('helpSheet').hidden = true; if (document.body.classList.contains('immersive')) toggleFull(); }
+      else if (/^[1-9]$/.test(k) && !wallOn && displayList[Number(k) - 1]) { $('displaySel').value = String(displayList[Number(k) - 1].id); $('displaySel').dispatchEvent(new Event('change')); }
+      else return;
+      e.preventDefault();
+    });
+    // Back to the tab, or back from the browser's back-forward cache: play on.
+    document.addEventListener('visibilitychange', () => { if (document.hidden || $('vWatch').hidden) return; if (!views().length) watch(); else for (const v of views()) keepPlaying(v.video); });
+    addEventListener('pageshow', e => { if (e.persisted && !$('vWatch').hidden) watch(); });
   }
 
   // ================= owner: this computer's window =================
@@ -372,16 +663,20 @@
       el('div', { class: 'row mt16' },
         el('button', { class: 'btn primary', type: 'button', 'data-act': 'allow', text: 'Allow', onclick: () => act('/api/owner/allow', { req: p.req }) }),
         el('button', { class: 'btn', type: 'button', 'data-act': 'deny', text: 'Deny', onclick: () => act('/api/owner/deny', { req: p.req }) })))));
-    // watching
-    $('oLiveList').replaceChildren(...(n ? s.live.map(l => el('li', { class: 'item', 'data-live': l.id },
+    // watching: one row per device (a device watching every display holds a session for each)
+    const byDev = [];
+    for (const l of s.live) { let g = byDev.find(x => x.device === l.device); if (!g) { g = { device: l.device, list: [] }; byDev.push(g); } g.list.push(l); }
+    $('oLiveList').replaceChildren(...(byDev.length ? byDev.map(g => { const l = g.list[0], n = g.list.length;
+      return el('li', { class: 'item', 'data-live': l.id },
       el('div', { class: 'grow' },
         el('div', { class: 'title', text: l.name }),
-        el('div', { class: 'sub', text: l.agent + ' at ' + l.addr + ' for ' + dur(l.since) }),
+        el('div', { class: 'sub', text: l.agent + ' at ' + l.addr + ' for ' + dur(Math.min(...g.list.map(x => x.since))) + (n > 1 ? ', ' + n + ' displays at once' : '') }),
         el('div', { class: 'stats' },
-          stat(l.fps, 'fps'), stat(l.width ? l.width + 'x' + l.height : '-', 'picture'),
-          stat(l.lat_p50 ? l.lat_p50 + ' ms' : '-', 'link delay'), stat(l.sound ? 'On' : 'Off', 'sound'))),
-      el('button', { class: 'btn small', type: 'button', 'data-act': 'end', text: 'End', onclick: () => act('/api/owner/end', { id: l.id }) })))
+          stat(Math.max(...g.list.map(x => x.fps)), 'fps'), stat(l.width ? l.width + 'x' + l.height : '-', 'picture'),
+          stat(l.lat_p50 ? l.lat_p50 + ' ms' : '-', 'link delay'), stat(g.list.some(x => x.sound) ? 'On' : 'Off', 'sound'))),
+      el('button', { class: 'btn small', type: 'button', 'data-act': 'end', text: 'End', onclick: async () => { for (const x of g.list) await api('/api/owner/end', { id: x.id }).catch(() => {}); refresh(); } })); })
       : [el('li', { class: 'empty', text: 'Nobody is watching this computer.' })]));
+    $('oLiveTx').textContent = byDev.length ? (byDev.length === 1 ? '1 watching' : byDev.length + ' watching') : 'Nobody watching';
     // permission and switches (only the app has them; the test server has none)
     $('oPerm').hidden = s.capture_allowed !== false;
     const sw = Object.entries(s.switches || {});

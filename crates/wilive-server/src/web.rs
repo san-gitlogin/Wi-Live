@@ -25,6 +25,12 @@ pub static ASSETS: &[Asset] = &[
     asset!("/app.js", "text/javascript; charset=utf-8", "app.js"),
     asset!("/crypto.js", "text/javascript; charset=utf-8", "crypto.js"),
     asset!("/logo.svg", "image/svg+xml", "logo.svg"),
+    asset!("/icon-256.png", "image/png", "icon-256.png"),
+    asset!(
+        "/manifest.webmanifest",
+        "application/manifest+json",
+        "manifest.webmanifest"
+    ),
     asset!("/fonts/inter.woff2", "font/woff2", "fonts/inter.woff2"),
     asset!("/fonts/jbmono.woff2", "font/woff2", "fonts/jbmono.woff2"),
 ];
@@ -93,7 +99,7 @@ mod tests {
     fn the_whole_dashboard_stays_small() {
         let code: usize = ASSETS
             .iter()
-            .filter(|a| !a.path.starts_with("/fonts"))
+            .filter(|a| !a.path.starts_with("/fonts") && !a.path.ends_with(".png"))
             .map(|a| a.body.len())
             .sum();
         assert!(

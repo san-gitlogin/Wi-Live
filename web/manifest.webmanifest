@@ -1,0 +1,13 @@
+{
+  "name": "Wi-Live",
+  "short_name": "Wi-Live",
+  "description": "Watch a computer's screen on your home network.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#0F0C0C",
+  "theme_color": "#0F0C0C",
+  "icons": [{ "src": "/icon-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }]
+}

@@ -73,3 +73,36 @@ def test_the_watching_bar_fits_every_size_and_the_picture_fills_the_screen(chrom
         if abs(r[0] - r[2]) > 1 or abs(r[1] - r[3]) > 1:
             problems.append(f"{size}: the picture's box {r[0]}x{r[1]} is not the screen")
     assert not problems, "\n".join(problems)
+
+
+def test_all_displays_fit_every_size_in_every_layout(chrome, make_server):
+    s = make_server("1280", "720", "60", WILIVE_DISPLAYS=4)
+    owner = owner_page(chrome, s)
+    v = ctx(chrome, (1280, 800), "dark").new_page()
+    v.goto(s.base + "/")
+    pair(owner, v)
+    v.click("#btnWall")
+    v.wait_for_function("() => document.querySelectorAll('#wall .tile').length === 4")
+    problems = []
+    for layout in ["grid", "row", "column", "focus"]:
+        while v.get_attribute("#wall", "data-layout") != layout:
+            v.click("#btnLayout")
+        for size in SIZES:
+            v.set_viewport_size({"width": size[0], "height": size[1]})
+            v.wait_for_timeout(120)
+            problems += [f"{layout} {size}: {x}" for x in v.evaluate(CHECK, "#bar button:not([hidden]), #bar select:not([hidden]), #liveChip")]
+            tiles = v.evaluate("""() => [...document.querySelectorAll('#wall .screen')].map(t => { const r = t.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })""")
+            shapes = v.evaluate("""() => [...document.querySelectorAll('#wall .tile')].map(t => { const r = t.firstChild.getBoundingClientRect(); return Math.abs(r.width / r.height - Number(t.dataset.ar)); })""")
+            problems += [f"{layout} {size}: screen {i} is not its display's shape" for i, d in enumerate(shapes) if d > 0.03 * max(1, d)]
+            W, H = size
+            for i, (l, t, r, b) in enumerate(tiles):
+                if l < -1 or t < -1 or r > W + 1 or b > H + 1:
+                    problems.append(f"{layout} {size}: tile {i} off screen")
+                if min(r - l, b - t) < 40 or (r - l) * (b - t) < 4000:
+                    problems.append(f"{layout} {size}: tile {i} too small ({r - l:.0f}x{b - t:.0f})")
+            for i in range(len(tiles)):
+                for j in range(i + 1, len(tiles)):
+                    a, c = tiles[i], tiles[j]
+                    if a[0] < c[2] - 1 and c[0] < a[2] - 1 and a[1] < c[3] - 1 and c[1] < a[3] - 1:
+                        problems.append(f"{layout} {size}: tiles {i} and {j} overlap")
+    assert not problems, "\n".join(problems[:40])

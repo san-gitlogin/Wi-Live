@@ -83,3 +83,15 @@ def test_the_media_query_dark_theme_matches_the_forced_one():
     forced = re.search(r':root\[data-theme="dark"\]\s*\{(.*?)\}', CSS, re.S).group(1)
     norm = lambda s: sorted(x.strip() for x in s.split(";") if x.strip())
     assert norm(auto) == norm(forced)
+
+
+def test_no_decorative_accent_bars():
+    """Owner, 2026-11-25: "I don't like the AI sluggish container which has colour at
+    the left end ... I don't want anywhere to have AI slop." No one-sided coloured
+    borders: a card is a card."""
+    sides = re.findall(r"border-(?:left|right|top|bottom)(?:-width|-color)?\s*:([^;]*)", CSS)
+    # A 1px neutral divider between list rows is fine; colour or weight on one side is not.
+    bad = [v.strip() for v in sides if v.strip() not in ("0", "none", "1px solid var(--line)")]
+    bad += re.findall(r"border-inline(?:-start|-end)?\s*:[^;]*", CSS)
+    bad += re.findall(r"box-shadow\s*:\s*inset\s+-?[1-9][^;]*", CSS)
+    assert not bad, bad

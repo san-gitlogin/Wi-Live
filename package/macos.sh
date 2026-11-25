@@ -63,8 +63,15 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
 rm -rf "$iconset"
-if [ "$sign" = "-" ] && security find-identity -p codesigning 2>/dev/null | grep -q '"Wi-Live Local"'; then
-  codesign --force --sign "Wi-Live Local" --timestamp=none "$app"
+# A local identity keeps the permission across rebuilds. "HID-Fi Local" is the
+# owner's existing development certificate on this Mac; Wi-Live gets its own for
+# releases (an owner decision, docs/PROGRESS.md).
+local_id=""
+for id in "Wi-Live Local" "HID-Fi Local"; do
+  if security find-identity -p codesigning 2>/dev/null | grep -q "\"$id\""; then local_id="$id"; break; fi
+done
+if [ "$sign" = "-" ] && [ -n "$local_id" ]; then
+  codesign --force --sign "$local_id" --timestamp=none "$app"
 elif [ "$sign" = "-" ]; then
   codesign --force --sign - --timestamp=none "$app"
 else
