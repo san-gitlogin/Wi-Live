@@ -123,8 +123,7 @@ body.watching { background: var(--stage); overflow: hidden; }
 .stage[data-fit="actual"] video { position: static; width: auto; height: auto; max-width: none; max-height: none; }
 .bar { position: fixed; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; padding-top: max(10px, var(--sat)); padding-left: max(12px, var(--sal)); padding-right: max(12px, var(--sar));
   background: linear-gradient(rgba(15,12,12,.85), rgba(15,12,12,0)); color: #F6F1EF; transition: opacity .25s; z-index: 2; }
-.bar.faded { opacity: 0; }
-@media (hover: hover) and (pointer: fine) { .bar.faded { pointer-events: none; } }
+.bar.faded { opacity: 0; }  /* faded, never deaf: a click or tap on a control acts and wakes the bar */
 .bar .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .bar .spacer { flex: 1; }
 .bar .btn { background: rgba(255,255,255,.08); border-color: transparent; color: #F6F1EF; min-height: 36px; padding: 0 10px; }
