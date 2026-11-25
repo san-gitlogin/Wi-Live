@@ -6,7 +6,8 @@ import pytest
 from support.pages import OPEN, owner_page, pair, wait
 
 pytestmark = pytest.mark.e2e
-SIZES = [(320, 568), (375, 667), (390, 844), (844, 390), (768, 1024), (1024, 768), (1280, 800), (1920, 1080), (2560, 1440)]
+# Phones both ways up (iPhone SE, 8, 8 Plus, 13), tablets, laptops, big monitors.
+SIZES = [(320, 568), (568, 320), (375, 667), (667, 375), (414, 736), (736, 414), (390, 844), (844, 390), (768, 1024), (1024, 768), (1280, 800), (1920, 1080), (2560, 1440)]
 
 CHECK = """(sel) => {
   const W = innerWidth, H = innerHeight, out = [];
@@ -98,7 +99,8 @@ def test_all_displays_fit_every_size_in_every_layout(chrome, make_server):
             for i, (l, t, r, b) in enumerate(tiles):
                 if l < -1 or t < -1 or r > W + 1 or b > H + 1:
                     problems.append(f"{layout} {size}: tile {i} off screen")
-                if min(r - l, b - t) < 40 or (r - l) * (b - t) < 4000:
+                thumb = layout == "focus" and i > 0   # a preview beside the big one: tappable is enough
+                if min(r - l, b - t) < 40 or (not thumb and (r - l) * (b - t) < 4000):
                     problems.append(f"{layout} {size}: tile {i} too small ({r - l:.0f}x{b - t:.0f})")
             for i in range(len(tiles)):
                 for j in range(i + 1, len(tiles)):

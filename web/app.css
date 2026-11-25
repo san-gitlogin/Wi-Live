@@ -136,7 +136,8 @@ body.watching { background: var(--stage); overflow: hidden; }
 .overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center; color: #F6F1EF; pointer-events: none; z-index: 1; text-align: center; padding: 16px; padding-left: max(16px, var(--sal)); padding-right: max(16px, var(--sar)); }
 .overlay .msg { pointer-events: auto; background: rgba(24,19,19,.92); color: #F6F1EF; max-width: 420px; }
 .hud { position: fixed; right: max(12px, var(--sar)); bottom: max(12px, var(--sab)); font: 500 12px/1.4 var(--mono); color: #F6F1EF; background: rgba(15,12,12,.7); padding: 6px 8px; border-radius: 8px; z-index: 2; font-variant-numeric: tabular-nums; }
-@media (max-width: 520px) { .bar .label { display: none; } .bar .name { display: none; } .bar select { max-width: 42vw; } }
+@media (max-width: 759px) { .bar .label { display: none; } .bar select { max-width: 34vw; } }
+@media (max-width: 520px) { .bar .name { display: none; } .bar select { max-width: 42vw; } }
 @media (max-width: 379px) { .bar { gap: 6px; padding-left: max(8px, var(--sal)); padding-right: max(8px, var(--sar)); } .bar .btn { padding: 0 8px; } .bar select { max-width: 30vw; } }
 .sprite { position: absolute; }
 .m0 { margin: 0; } .mb8 { margin: 0 0 8px; } .mt16 { margin-top: 16px; }

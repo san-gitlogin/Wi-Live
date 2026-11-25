@@ -58,11 +58,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb x11-utils x11-xserver-utils x11-apps libavdevice-dev libavfilter-dev libopus-dev libvpx-dev libsrtp2-dev
           python -m pip install aiortc==1.9.0
-          Xvfb :99 -screen 0 3200x1200x24 +extension RANDR & sleep 2
-          export DISPLAY=:99 WILIVE_X11_MONITORS="LEFT=1920x1080+0+0,RIGHT=1280x1200+1920+0"
-          xsetroot -solid '#c00000'; (xlogo -geometry 1280x1200+1920+0 -bg '#0000c0' -fg '#0000c0' &)
-          WILIVE_REAL_SCREEN=1 ./target/release/examples/serve 1920 1080 30 > /tmp/serve.json 2>/tmp/serve.log &
-          sleep 3; python tests/linux/view_e2e.py /tmp/serve.json
+          sh tests/linux/x11_e2e.sh ./target/release/examples/serve
       - name: Browser tiers (real Google Chrome, and WebKit)
         if: runner.arch != 'ARM64'   # no Google Chrome for Linux on ARM (tests/linux covers it with a Python viewer)
         # Hosted runners are shared VMs without a GPU: their encoders are software,
