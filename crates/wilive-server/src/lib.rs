@@ -228,67 +228,44 @@ pub fn start(port: Option<u16>, state: Arc<State>, media: Media) -> std::io::Res
     })
 }
 
-fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
+fn connection(c: &Arc<Ctx>, mut stream: TcpStream, peer: SocketAddr) {
     let _ = stream.set_nodelay(true);
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let mut carry = Vec::new();
-    let mut reader = match stream.try_clone() {
-        Ok(s) => s,
-        Err(_) => return,
+    // Answers an error and closes without the reply being lost to a reset.
+    let refuse = |s: &mut TcpStream, r: Response| {
+        let _ = write_response(s, &r, false, false);
+        http::close_gently(s);
     };
-    let mut writer = stream;
     for n in 0..KEEP_ALIVE_MAX {
-        let r = {
-            let s2 = writer.try_clone();
-            let mut set = |d: Duration| {
-                if let Ok(s) = &s2 {
-                    let _ =
-                        s.set_read_timeout(Some(if n == 0 { d } else { d.min(KEEP_ALIVE_IDLE) }));
-                }
-            };
-            read_request(&mut reader, &mut carry, &mut set)
+        let wait = if n == 0 {
+            http::HEAD_DEADLINE
+        } else {
+            KEEP_ALIVE_IDLE
         };
-        let req = match r {
+        let req = match read_request(&mut stream, &mut carry, wait) {
             Ok(r) => r,
             Err(ReadError::Closed) | Err(ReadError::Io(_)) => return,
-            Err(ReadError::TooBig) => {
-                let _ = write_response(&mut writer, &Response::error(413, "too_big"), false, false);
-                return;
-            }
+            Err(ReadError::TooBig) => return refuse(&mut stream, Response::error(413, "too_big")),
             Err(ReadError::Malformed) | Err(ReadError::Slow) => {
-                let _ = write_response(
-                    &mut writer,
-                    &Response::error(400, "bad_request"),
-                    false,
-                    false,
-                );
-                return;
+                return refuse(&mut stream, Response::error(400, "bad_request"))
             }
         };
         if !req.header("host").is_some_and(host_ok) {
-            let _ = write_response(&mut writer, &Response::error(421, "host"), false, false);
-            return;
+            return refuse(&mut stream, Response::error(421, "host"));
         }
         if !origin_ok(&req) && (req.method != "GET" || req.is_websocket()) {
-            let _ = write_response(&mut writer, &Response::error(403, "origin"), false, false);
-            return;
+            return refuse(&mut stream, Response::error(403, "origin"));
         }
         if req.is_websocket() {
             if req.path != "/v1/signal" {
-                let _ = write_response(&mut writer, &Response::error(404, "unknown"), false, false);
-                return;
+                return refuse(&mut stream, Response::error(404, "unknown"));
             }
             let Some(key) = req.header("sec-websocket-key").map(str::to_string) else {
-                let _ = write_response(
-                    &mut writer,
-                    &Response::error(400, "bad_request"),
-                    false,
-                    false,
-                );
-                return;
+                return refuse(&mut stream, Response::error(400, "bad_request"));
             };
             let agent = api::agent_summary(req.header("user-agent").unwrap_or(""));
-            if let Ok(ws) = signal::upgrade(writer, &key) {
+            if let Ok(ws) = signal::upgrade(stream, &key) {
                 if let Err(e) =
                     signal::serve(&c.state, &c.media, &c.strikes, &c.stop, ws, peer, agent)
                 {
@@ -299,7 +276,7 @@ fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
         }
         let keep = req.keep_alive() && n + 1 < KEEP_ALIVE_MAX;
         let resp = route(c, &req, peer.ip());
-        if write_response(&mut writer, &resp, keep, req.method == "HEAD").is_err() || !keep {
+        if write_response(&mut stream, &resp, keep, req.method == "HEAD").is_err() || !keep {
             return;
         }
     }

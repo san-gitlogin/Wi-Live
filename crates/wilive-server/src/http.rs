@@ -123,10 +123,27 @@ pub fn parse_head(head: &str) -> Result<Request, ReadError> {
 /// Reads one request from a stream: head within [`HEAD_DEADLINE`], at most
 /// [`HEAD_MAX`] bytes; then a body of at most [`BODY_MAX`] bytes. `carry` holds
 /// bytes already read past the previous request (pipelining) and is refilled.
-pub fn read_request<S: Read>(
+/// A stream whose reads can be given a deadline. The timeout is set on the very
+/// handle that reads: on Windows a socket option set on a cloned handle does not
+/// reach the original (a silent client then held its thread forever - found in
+/// the Windows VM, 2026-11-26).
+pub trait Timed: Read {
+    fn set_timeout(&mut self, d: Duration);
+}
+impl Timed for std::net::TcpStream {
+    fn set_timeout(&mut self, d: Duration) {
+        let _ = self.set_read_timeout(Some(d.max(Duration::from_millis(1))));
+    }
+}
+impl<T: AsRef<[u8]>> Timed for std::io::Cursor<T> {
+    fn set_timeout(&mut self, _: Duration) {}
+}
+
+/// `first_wait` caps the wait for a request's first byte (keep-alive idle).
+pub fn read_request<S: Timed>(
     s: &mut S,
     carry: &mut Vec<u8>,
-    set_timeout: &mut dyn FnMut(Duration),
+    first_wait: Duration,
 ) -> Result<Request, ReadError> {
     let start = Instant::now();
     let mut buf = std::mem::take(carry);
@@ -141,7 +158,11 @@ pub fn read_request<S: Read>(
         if left.is_zero() {
             return Err(ReadError::Slow);
         }
-        set_timeout(left);
+        s.set_timeout(if buf.is_empty() {
+            left.min(first_wait)
+        } else {
+            left
+        });
         let mut chunk = [0u8; 2048];
         match s.read(&mut chunk) {
             Ok(0) if buf.is_empty() => return Err(ReadError::Closed),
@@ -178,7 +199,7 @@ pub fn read_request<S: Read>(
         if left.is_zero() {
             return Err(ReadError::Slow);
         }
-        set_timeout(left);
+        s.set_timeout(left);
         let mut chunk = [0u8; 2048];
         match s.read(&mut chunk) {
             Ok(0) => return Err(ReadError::Malformed),
@@ -254,6 +275,22 @@ pub const SECURITY_HEADERS: &[(&str, &str)] = &[
     ("Permissions-Policy", "camera=(), geolocation=(), payment=()"),
 ];
 
+/// Closes after an error without losing the answer: on Windows, closing a socket
+/// with unread input sends a reset, and the client never sees the reply. Stop
+/// writing, read and drop what is left (briefly, boundedly), then close.
+pub fn close_gently(s: &mut std::net::TcpStream) {
+    let _ = s.shutdown(std::net::Shutdown::Write);
+    let _ = s.set_read_timeout(Some(Duration::from_millis(200)));
+    let mut sink = [0u8; 4096];
+    let mut left: usize = 64 * 1024;
+    while left > 0 {
+        match s.read(&mut sink) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => left = left.saturating_sub(n),
+        }
+    }
+}
+
 pub fn write_response<W: Write>(
     w: &mut W,
     r: &Response,
@@ -290,7 +327,7 @@ mod tests {
 
     fn read(bytes: &[u8]) -> Result<Request, ReadError> {
         let mut carry = Vec::new();
-        read_request(&mut Cursor::new(bytes.to_vec()), &mut carry, &mut |_| {})
+        read_request(&mut Cursor::new(bytes.to_vec()), &mut carry, HEAD_DEADLINE)
     }
 
     #[test]
@@ -308,15 +345,19 @@ mod tests {
         let mut c = Cursor::new(b"GET /a HTTP/1.1\r\n\r\nGET /b HTTP/1.1\r\n\r\n".to_vec());
         let mut carry = Vec::new();
         assert_eq!(
-            read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path,
+            read_request(&mut c, &mut carry, HEAD_DEADLINE)
+                .unwrap()
+                .path,
             "/a"
         );
         assert_eq!(
-            read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path,
+            read_request(&mut c, &mut carry, HEAD_DEADLINE)
+                .unwrap()
+                .path,
             "/b"
         );
         assert_eq!(
-            read_request(&mut c, &mut carry, &mut |_| {}).unwrap_err(),
+            read_request(&mut c, &mut carry, HEAD_DEADLINE).unwrap_err(),
             ReadError::Closed
         );
     }

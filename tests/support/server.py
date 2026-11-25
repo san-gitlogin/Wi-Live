@@ -8,8 +8,10 @@ import time
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-EXE = ROOT / "target" / "release" / "examples" / ("serve.exe" if os.name == "nt" else "serve")
-_built = [False]
+# WILIVE_SERVE_EXE: a server built elsewhere (the Windows VM gets one built on the Mac).
+EXE = pathlib.Path(os.environ["WILIVE_SERVE_EXE"]) if os.environ.get("WILIVE_SERVE_EXE") else \
+    ROOT / "target" / "release" / "examples" / ("serve.exe" if os.name == "nt" else "serve")
+_built = [bool(os.environ.get("WILIVE_SERVE_EXE"))]
 
 
 def build():

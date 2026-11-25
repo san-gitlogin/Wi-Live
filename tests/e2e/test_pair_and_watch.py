@@ -2,7 +2,7 @@
 hardware H.264. The owner's window and each device are separate pages."""
 import pytest
 
-from support.pages import ask, frames, owner_page, pair, until, viewer_page, wait
+from support.pages import SOFTWARE, ask, frames, owner_page, pair, sizes_ok, until, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -12,8 +12,8 @@ def test_a_new_device_pairs_by_code_and_watches(chrome, server):
     v = viewer_page(chrome, server)
     code = pair(owner, v, "Living room tablet")
     f = frames(v, 2)
-    assert (f["w"], f["h"]) == (1280, 720)
-    assert f["n"] >= 60, f"{f['n']} frames in 2 s (60 fps sent)"
+    assert sizes_ok(f["w"], f["h"], 1280, 720), (f["w"], f["h"])
+    assert f["n"] >= (20 if SOFTWARE else 60), f"{f['n']} frames in 2 s (60 fps sent)"
     owner.wait_for_selector("#oLiveList [data-live]:has-text('Living room tablet')")
     assert owner.text_content("#oLiveTx") == "1 watching"
     owner.wait_for_selector("#oDevList [data-dev]:has-text('Living room tablet')")

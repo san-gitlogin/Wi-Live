@@ -76,3 +76,16 @@ def until(f, timeout=10, step=0.2):
             return v
         time.sleep(step)
     return f()
+
+
+import os as _os
+# WILIVE_SOFTWARE_ENCODER=1: a machine without a hardware encoder (the Windows VM
+# under emulation). Rate control rightly keeps it on a smaller size there; the
+# tests then accept any of the three sizes, in the right shape.
+SOFTWARE = _os.environ.get("WILIVE_SOFTWARE_ENCODER") == "1"
+
+
+def sizes_ok(w, h, full_w, full_h):
+    if (w, h) == (full_w, full_h):
+        return True
+    return SOFTWARE and (w, h) in {(full_w // 2 & ~1, full_h // 2 & ~1), (full_w // 4 & ~1, full_h // 4 & ~1)}

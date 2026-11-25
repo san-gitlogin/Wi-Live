@@ -3,7 +3,7 @@ play on, the watchdog, every display at once (arranged and remembered), zoom,
 keyboard, the watermark. Plus the same viewer in WebKit, Safari's engine."""
 import pytest
 
-from support.pages import OPEN, frames, owner_page, pair, viewer_page, wait
+from support.pages import OPEN, SOFTWARE, frames, owner_page, pair, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -53,9 +53,13 @@ def test_every_display_at_once_arranged_and_remembered(chrome, make_server):
     pair(o, v, "Wall")
     v.click("#btnWall")
     # Each starts at half size and steps up as the link estimate allows (rate control).
-    v.wait_for_function("() => { const w = [...document.querySelectorAll('#wall .tile video')].map(x => x.videoWidth); return w.join() === '1280,1280,1080'; }", timeout=20000)
+    want = "1280,1280,1080" if not SOFTWARE else None
+    v.wait_for_function("(want) => { const w = [...document.querySelectorAll('#wall .tile video')].map(x => x.videoWidth); return want ? w.join() === want : w.every(x => x > 0); }", arg=want, timeout=20000)
     sizes = v.evaluate("() => [...document.querySelectorAll('#wall .tile')].map(t => [t.dataset.display, t.querySelector('video').videoWidth, t.querySelector('video').videoHeight])")
-    assert sizes == [["1", 1280, 720], ["2", 1280, 1024], ["3", 1080, 1920]], sizes
+    if SOFTWARE:   # the right display in each tile, by shape
+        assert [s[0] for s in sizes] == ["1", "2", "3"] and sizes[2][2] > sizes[2][1] and sizes[0][1] > sizes[0][2], sizes
+    else:
+        assert sizes == [["1", 1280, 720], ["2", 1280, 1024], ["3", 1080, 1920]], sizes
     o.wait_for_selector("#oLiveList :text('3 displays at once')")
     assert o.text_content("#oLiveTx") == "1 watching", "one device, however many displays"
     # drag the first onto the last
