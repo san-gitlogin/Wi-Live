@@ -80,7 +80,13 @@ mod tests {
     use super::*;
 
     fn ev(at: u64) -> Event {
-        Event { at, kind: Kind::Watching, who: "Pixel".into(), addr: "192.168.0.5".into(), detail: String::new() }
+        Event {
+            at,
+            kind: Kind::Watching,
+            who: "Pixel".into(),
+            addr: "192.168.0.5".into(),
+            detail: String::new(),
+        }
     }
 
     #[test]

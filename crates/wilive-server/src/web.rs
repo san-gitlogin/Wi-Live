@@ -11,7 +11,11 @@ pub struct Asset {
 
 macro_rules! asset {
     ($path:expr, $ctype:expr, $file:expr) => {
-        Asset { path: $path, ctype: $ctype, body: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/", $file)) }
+        Asset {
+            path: $path,
+            ctype: $ctype,
+            body: include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/", $file)),
+        }
     };
 }
 
@@ -38,13 +42,28 @@ fn etag(b: &[u8]) -> String {
 /// The file for `path`, or a 304 when the browser already has it. Always
 /// revalidated (`no-cache`), so an updated app never serves yesterday's script.
 pub fn serve(path: &str, if_none_match: Option<&str>) -> Option<Response> {
-    let a = ASSETS.iter().find(|a| a.path == path || (path == "/index.html" && a.path == "/"))?;
+    let a = ASSETS
+        .iter()
+        .find(|a| a.path == path || (path == "/index.html" && a.path == "/"))?;
     let tag = etag(a.body);
-    let headers = vec![("Cache-Control", "no-cache".to_string()), ("ETag", tag.clone())];
+    let headers = vec![
+        ("Cache-Control", "no-cache".to_string()),
+        ("ETag", tag.clone()),
+    ];
     if if_none_match == Some(tag.as_str()) {
-        return Some(Response { status: 304, ctype: a.ctype, body: Vec::new(), headers });
+        return Some(Response {
+            status: 304,
+            ctype: a.ctype,
+            body: Vec::new(),
+            headers,
+        });
     }
-    Some(Response { status: 200, ctype: a.ctype, body: a.body.to_vec(), headers })
+    Some(Response {
+        status: 200,
+        ctype: a.ctype,
+        body: a.body.to_vec(),
+        headers,
+    })
 }
 
 #[cfg(test)]
@@ -57,7 +76,13 @@ mod tests {
             let r = serve(a.path, None).unwrap();
             assert_eq!(r.status, 200, "{}", a.path);
             assert!(!r.body.is_empty(), "{}", a.path);
-            let tag = r.headers.iter().find(|(k, _)| *k == "ETag").unwrap().1.clone();
+            let tag = r
+                .headers
+                .iter()
+                .find(|(k, _)| *k == "ETag")
+                .unwrap()
+                .1
+                .clone();
             assert_eq!(serve(a.path, Some(&tag)).unwrap().status, 304);
         }
         assert!(serve("/nope", None).is_none());
@@ -66,7 +91,14 @@ mod tests {
 
     #[test]
     fn the_whole_dashboard_stays_small() {
-        let code: usize = ASSETS.iter().filter(|a| !a.path.starts_with("/fonts")).map(|a| a.body.len()).sum();
-        assert!(code < 150 * 1024, "the page's own files are {code} bytes (R-05: under 150 KB)");
+        let code: usize = ASSETS
+            .iter()
+            .filter(|a| !a.path.starts_with("/fonts"))
+            .map(|a| a.body.len())
+            .sum();
+        assert!(
+            code < 150 * 1024,
+            "the page's own files are {code} bytes (R-05: under 150 KB)"
+        );
     }
 }

@@ -89,7 +89,8 @@ pub fn derive_key(
     let salt: [u8; 32] = salt.finalize().into();
     let hk = Hkdf::<Sha256>::new(Some(&salt), shared);
     let mut out = [0u8; KEY_LEN];
-    hk.expand(HKDF_INFO, &mut out).expect("32 bytes is a valid HKDF length");
+    hk.expand(HKDF_INFO, &mut out)
+        .expect("32 bytes is a valid HKDF length");
     DeviceKey(out)
 }
 
@@ -159,7 +160,10 @@ impl Responder {
             return Err(PairError::WeakPeerKey);
         }
         let code = sas(v_pub, &self.a_pub, n_v, &self.n_a);
-        Ok((code, derive_key(shared.as_bytes(), v_pub, &self.a_pub, n_v, &self.n_a)))
+        Ok((
+            code,
+            derive_key(shared.as_bytes(), v_pub, &self.a_pub, n_v, &self.n_a),
+        ))
     }
 }
 
@@ -202,7 +206,10 @@ mod tests {
     fn a_reveal_that_does_not_match_the_commitment_is_refused() {
         let (_, vp, _, c) = viewer([3; 32], [4; 16]);
         let r = Responder::from_parts([5; 32], [6; 16]);
-        assert_eq!(r.finish(&vp, &c, &[9; 16]).unwrap_err(), PairError::CommitMismatch);
+        assert_eq!(
+            r.finish(&vp, &c, &[9; 16]).unwrap_err(),
+            PairError::CommitMismatch
+        );
     }
 
     #[test]
@@ -210,7 +217,10 @@ mod tests {
         let zero = [0u8; 32];
         let n = [1u8; 16];
         let r = Responder::from_parts([5; 32], [6; 16]);
-        assert_eq!(r.finish(&zero, &commit(&zero, &n), &n).unwrap_err(), PairError::WeakPeerKey);
+        assert_eq!(
+            r.finish(&zero, &commit(&zero, &n), &n).unwrap_err(),
+            PairError::WeakPeerKey
+        );
     }
 
     #[test]
@@ -220,7 +230,10 @@ mod tests {
         assert!(hello_ok(&k, "dev1", "c0ffee", &m));
         assert!(!hello_ok(&k, "dev2", "c0ffee", &m), "another device");
         assert!(!hello_ok(&k, "dev1", "c0ffef", &m), "another challenge");
-        assert!(!hello_ok(&DeviceKey::from_bytes([8; 32]), "dev1", "c0ffee", &m), "another key");
+        assert!(
+            !hello_ok(&DeviceKey::from_bytes([8; 32]), "dev1", "c0ffee", &m),
+            "another key"
+        );
         assert!(!hello_ok(&k, "dev1", "c0ffee", &m[..31]), "short");
     }
 
@@ -232,6 +245,9 @@ mod tests {
 
     #[test]
     fn the_key_never_prints() {
-        assert_eq!(format!("{:?}", DeviceKey::from_bytes([1; 32])), "DeviceKey(..)");
+        assert_eq!(
+            format!("{:?}", DeviceKey::from_bytes([1; 32])),
+            "DeviceKey(..)"
+        );
     }
 }

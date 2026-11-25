@@ -12,10 +12,10 @@
 //! Seen on Windows (Media Foundation, v4.0): at 1920x1080 a constant 27 Mbit/s
 //! whatever the target (12-54x), because the rate control mode was set after
 //! the output type and the encoder ignored it.
+use std::time::Instant;
 use wilive_stream::frame::{Encoder, Frame};
 use wilive_stream::pattern::Pattern;
 use wilive_stream::pipeline::Source;
-use std::time::Instant;
 
 const FPS: u32 = 30;
 const SECS: u32 = 4;

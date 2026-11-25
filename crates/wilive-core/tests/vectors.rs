@@ -36,6 +36,7 @@ fn the_pairing_bytes_match_the_pinned_vectors() {
     if std::env::var("WILIVE_WRITE_VECTORS").is_ok_and(|v| v == "1") {
         std::fs::write(path, serde_json::to_string_pretty(&got).unwrap() + "\n").unwrap();
     }
-    let want: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).expect("vectors file")).unwrap();
+    let want: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("vectors file")).unwrap();
     assert_eq!(got, want);
 }

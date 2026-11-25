@@ -211,7 +211,12 @@ impl FakeDisplays {
         self.source_with(display, busy, false)
     }
     /// As [`Self::source`], with the latency test's time strip when `clock`.
-    pub fn source_with(&self, display: Option<u32>, busy: bool, clock: bool) -> Result<Box<dyn Source>, String> {
+    pub fn source_with(
+        &self,
+        display: Option<u32>,
+        busy: bool,
+        clock: bool,
+    ) -> Result<Box<dyn Source>, String> {
         let l = self.list();
         let d = match display {
             None => l.iter().find(|d| d.main),
@@ -248,7 +253,10 @@ mod clock_tests {
         p.grab(true, &mut |f| got = read(f)).unwrap();
         let after = wall_ms();
         let t = got.expect("strip found");
-        assert!(t.wrapping_sub(before) <= after.wrapping_sub(before), "{before} <= {t} <= {after}");
+        assert!(
+            t.wrapping_sub(before) <= after.wrapping_sub(before),
+            "{before} <= {t} <= {after}"
+        );
     }
 
     #[test]

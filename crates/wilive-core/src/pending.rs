@@ -37,7 +37,9 @@ pub enum Status {
     Started,
     /// The code is on both screens; the owner has not answered.
     Waiting,
-    Allowed { device: String },
+    Allowed {
+        device: String,
+    },
     Denied,
 }
 
@@ -107,7 +109,10 @@ impl Pending {
 
     fn find(&mut self, req: &str, now: u64) -> Result<&mut Req, Refuse> {
         self.expire(now);
-        self.reqs.iter_mut().find(|r| r.id == req).ok_or(Refuse::Unknown)
+        self.reqs
+            .iter_mut()
+            .find(|r| r.id == req)
+            .ok_or(Refuse::Unknown)
     }
 
     /// Returns `(req, a_pub, n_a)`.
@@ -126,7 +131,13 @@ impl Pending {
         self.expire(now);
         let open = |r: &&Req| r.answer.is_none();
         if self.reqs.iter().filter(open).count() >= MAX_PENDING
-            || self.reqs.iter().filter(open).filter(|r| r.addr == addr).count() >= MAX_PER_ADDR
+            || self
+                .reqs
+                .iter()
+                .filter(open)
+                .filter(|r| r.addr == addr)
+                .count()
+                >= MAX_PER_ADDR
         {
             return Err(Refuse::Busy);
         }
@@ -175,7 +186,12 @@ impl Pending {
             return Err(Refuse::Order);
         }
         let key = r.key.take().ok_or(Refuse::Order)?;
-        r.answer = Some((Status::Allowed { device: device_id.clone() }, now));
+        r.answer = Some((
+            Status::Allowed {
+                device: device_id.clone(),
+            },
+            now,
+        ));
         Ok(Allowed {
             device: device_id,
             name: r.name.clone(),
@@ -244,10 +260,29 @@ mod tests {
     fn v(seed: u8) -> V {
         let s = StaticSecret::from([seed; 32]);
         let p = PublicKey::from(&s).to_bytes();
-        V { s, p, n: [seed ^ 0x55; 16] }
+        V {
+            s,
+            p,
+            n: [seed ^ 0x55; 16],
+        }
     }
-    fn start(p: &mut Pending, x: &V, addr: IpAddr, id: &str, now: u64) -> Result<(String, [u8; 32], Nonce), Refuse> {
-        p.start("Pixel 7", "Chrome on Android", addr, x.p, commit(&x.p, &x.n), Responder::from_parts([9; 32], [8; 16]), id.into(), now)
+    fn start(
+        p: &mut Pending,
+        x: &V,
+        addr: IpAddr,
+        id: &str,
+        now: u64,
+    ) -> Result<(String, [u8; 32], Nonce), Refuse> {
+        p.start(
+            "Pixel 7",
+            "Chrome on Android",
+            addr,
+            x.p,
+            commit(&x.p, &x.n),
+            Responder::from_parts([9; 32], [8; 16]),
+            id.into(),
+            now,
+        )
     }
 
     #[test]
@@ -256,7 +291,10 @@ mod tests {
         let x = v(1);
         let (req, a_pub, n_a) = start(&mut p, &x, A, "r1", 0).unwrap();
         assert_eq!(p.status(&req, A, 10).unwrap(), Status::Started);
-        assert!(p.views(10).is_empty(), "nothing for the owner before the code exists");
+        assert!(
+            p.views(10).is_empty(),
+            "nothing for the owner before the code exists"
+        );
         let code = p.reveal(&req, &x.n, 20).unwrap();
         assert_eq!(code, sas(&x.p, &a_pub, &x.n, &n_a));
         assert_eq!(p.status(&req, A, 30).unwrap(), Status::Waiting);
@@ -265,8 +303,16 @@ mod tests {
         assert_eq!(views[0].code, crate::pair::format_code(code));
         let ok = p.allow(&req, "dev1".into(), 40).unwrap();
         let shared = x.s.diffie_hellman(&PublicKey::from(a_pub));
-        assert_eq!(ok.key, derive_key(shared.as_bytes(), &x.p, &a_pub, &x.n, &n_a));
-        assert_eq!(p.status(&req, A, 50).unwrap(), Status::Allowed { device: "dev1".into() });
+        assert_eq!(
+            ok.key,
+            derive_key(shared.as_bytes(), &x.p, &a_pub, &x.n, &n_a)
+        );
+        assert_eq!(
+            p.status(&req, A, 50).unwrap(),
+            Status::Allowed {
+                device: "dev1".into()
+            }
+        );
         assert!(p.views(50).is_empty());
     }
 
@@ -288,7 +334,11 @@ mod tests {
         let x = v(1);
         let (req, ..) = start(&mut p, &x, A, "r1", 0).unwrap();
         assert_eq!(p.reveal(&req, &[0; 16], 1).err(), Some(Refuse::Proof));
-        assert_eq!(p.reveal(&req, &x.n, 2).err(), Some(Refuse::Unknown), "no second guess");
+        assert_eq!(
+            p.reveal(&req, &x.n, 2).err(),
+            Some(Refuse::Unknown),
+            "no second guess"
+        );
     }
 
     #[test]
@@ -299,7 +349,10 @@ mod tests {
         p.reveal(&req, &x.n, 1).unwrap();
         p.deny(&req, 2).unwrap();
         assert_eq!(p.status(&req, A, 3).unwrap(), Status::Denied);
-        assert_eq!(p.status(&req, A, 2 + ANSWER_TTL_MS).err(), Some(Refuse::Unknown));
+        assert_eq!(
+            p.status(&req, A, 2 + ANSWER_TTL_MS).err(),
+            Some(Refuse::Unknown)
+        );
     }
 
     #[test]
@@ -308,11 +361,19 @@ mod tests {
         let x = v(1);
         start(&mut p, &x, A, "a1", 0).unwrap();
         start(&mut p, &x, A, "a2", 0).unwrap();
-        assert_eq!(start(&mut p, &x, A, "a3", 0).err(), Some(Refuse::Busy), "two per address");
+        assert_eq!(
+            start(&mut p, &x, A, "a3", 0).err(),
+            Some(Refuse::Busy),
+            "two per address"
+        );
         start(&mut p, &x, B, "b1", 0).unwrap();
         start(&mut p, &x, B, "b2", 0).unwrap();
         let c: IpAddr = "10.0.0.9".parse().unwrap();
-        assert_eq!(start(&mut p, &x, c, "c1", 0).err(), Some(Refuse::Busy), "four in all");
+        assert_eq!(
+            start(&mut p, &x, c, "c1", 0).err(),
+            Some(Refuse::Busy),
+            "four in all"
+        );
         // answered requests do not hold a place
         p.reveal("a1", &x.n, 1).unwrap();
         p.deny("a1", 1).unwrap();

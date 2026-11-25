@@ -27,13 +27,17 @@ impl Request {
         self.headers.get(name).map(|s| s.as_str())
     }
     pub fn is_websocket(&self) -> bool {
-        self.header("upgrade").is_some_and(|u| u.eq_ignore_ascii_case("websocket"))
-            && self
-                .header("connection")
-                .is_some_and(|c| c.split(',').any(|t| t.trim().eq_ignore_ascii_case("upgrade")))
+        self.header("upgrade")
+            .is_some_and(|u| u.eq_ignore_ascii_case("websocket"))
+            && self.header("connection").is_some_and(|c| {
+                c.split(',')
+                    .any(|t| t.trim().eq_ignore_ascii_case("upgrade"))
+            })
     }
     pub fn keep_alive(&self) -> bool {
-        !self.header("connection").is_some_and(|c| c.eq_ignore_ascii_case("close"))
+        !self
+            .header("connection")
+            .is_some_and(|c| c.eq_ignore_ascii_case("close"))
     }
 }
 
@@ -55,7 +59,8 @@ fn decode_component(s: &str) -> String {
         match b[i] {
             b'+' => out.push(b' '),
             b'%' if i + 2 < b.len() => {
-                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16)
+                {
                     Ok(v) => {
                         out.push(v);
                         i += 2;
@@ -79,7 +84,11 @@ pub fn parse_head(head: &str) -> Result<Request, ReadError> {
         (Some(m), Some(t), Some(v), None) => (m, t, v),
         _ => return Err(ReadError::Malformed),
     };
-    if !version.starts_with("HTTP/1.") || !target.starts_with('/') || method.is_empty() || !method.bytes().all(|c| c.is_ascii_uppercase()) {
+    if !version.starts_with("HTTP/1.")
+        || !target.starts_with('/')
+        || method.is_empty()
+        || !method.bytes().all(|c| c.is_ascii_uppercase())
+    {
         return Err(ReadError::Malformed);
     }
     let (path, q) = target.split_once('?').unwrap_or((target, ""));
@@ -102,13 +111,23 @@ pub fn parse_head(head: &str) -> Result<Request, ReadError> {
         }
         headers.insert(k.to_ascii_lowercase(), v.trim().to_string());
     }
-    Ok(Request { method: method.to_string(), path: decode_component(path), query, headers, body: Vec::new() })
+    Ok(Request {
+        method: method.to_string(),
+        path: decode_component(path),
+        query,
+        headers,
+        body: Vec::new(),
+    })
 }
 
 /// Reads one request from a stream: head within [`HEAD_DEADLINE`], at most
 /// [`HEAD_MAX`] bytes; then a body of at most [`BODY_MAX`] bytes. `carry` holds
 /// bytes already read past the previous request (pipelining) and is refilled.
-pub fn read_request<S: Read>(s: &mut S, carry: &mut Vec<u8>, set_timeout: &mut dyn FnMut(Duration)) -> Result<Request, ReadError> {
+pub fn read_request<S: Read>(
+    s: &mut S,
+    carry: &mut Vec<u8>,
+    set_timeout: &mut dyn FnMut(Duration),
+) -> Result<Request, ReadError> {
     let start = Instant::now();
     let mut buf = std::mem::take(carry);
     let end = loop {
@@ -129,7 +148,11 @@ pub fn read_request<S: Read>(s: &mut S, carry: &mut Vec<u8>, set_timeout: &mut d
             Ok(0) => return Err(ReadError::Malformed),
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
             Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
-                return Err(if buf.is_empty() { ReadError::Closed } else { ReadError::Slow })
+                return Err(if buf.is_empty() {
+                    ReadError::Closed
+                } else {
+                    ReadError::Slow
+                })
             }
             Err(e) => return Err(ReadError::Io(e.to_string())),
         }
@@ -160,7 +183,9 @@ pub fn read_request<S: Read>(s: &mut S, carry: &mut Vec<u8>, set_timeout: &mut d
         match s.read(&mut chunk) {
             Ok(0) => return Err(ReadError::Malformed),
             Ok(n) => rest.extend_from_slice(&chunk[..n]),
-            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => return Err(ReadError::Slow),
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                return Err(ReadError::Slow)
+            }
             Err(e) => return Err(ReadError::Io(e.to_string())),
         }
     }
@@ -178,13 +203,23 @@ pub struct Response {
 
 impl Response {
     pub fn json(status: u16, v: &serde_json::Value) -> Self {
-        Response { status, ctype: "application/json", body: v.to_string().into_bytes(), headers: vec![("Cache-Control", "no-store".into())] }
+        Response {
+            status,
+            ctype: "application/json",
+            body: v.to_string().into_bytes(),
+            headers: vec![("Cache-Control", "no-store".into())],
+        }
     }
     pub fn error(status: u16, reason: &str) -> Self {
         Self::json(status, &serde_json::json!({"error": reason}))
     }
     pub fn empty(status: u16) -> Self {
-        Response { status, ctype: "text/plain", body: Vec::new(), headers: Vec::new() }
+        Response {
+            status,
+            ctype: "text/plain",
+            body: Vec::new(),
+            headers: Vec::new(),
+        }
     }
 }
 
@@ -219,8 +254,20 @@ pub const SECURITY_HEADERS: &[(&str, &str)] = &[
     ("Permissions-Policy", "camera=(), geolocation=(), payment=()"),
 ];
 
-pub fn write_response<W: Write>(w: &mut W, r: &Response, keep_alive: bool, head_only: bool) -> std::io::Result<()> {
-    let mut h = format!("HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: {}\r\n", r.status, reason(r.status), r.ctype, r.body.len(), if keep_alive { "keep-alive" } else { "close" });
+pub fn write_response<W: Write>(
+    w: &mut W,
+    r: &Response,
+    keep_alive: bool,
+    head_only: bool,
+) -> std::io::Result<()> {
+    let mut h = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: {}\r\n",
+        r.status,
+        reason(r.status),
+        r.ctype,
+        r.body.len(),
+        if keep_alive { "keep-alive" } else { "close" }
+    );
     for (k, v) in SECURITY_HEADERS {
         h.push_str(&format!("{k}: {v}\r\n"));
     }
@@ -260,24 +307,58 @@ mod tests {
     fn two_pipelined_requests_are_read_one_at_a_time() {
         let mut c = Cursor::new(b"GET /a HTTP/1.1\r\n\r\nGET /b HTTP/1.1\r\n\r\n".to_vec());
         let mut carry = Vec::new();
-        assert_eq!(read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path, "/a");
-        assert_eq!(read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path, "/b");
-        assert_eq!(read_request(&mut c, &mut carry, &mut |_| {}).unwrap_err(), ReadError::Closed);
+        assert_eq!(
+            read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path,
+            "/a"
+        );
+        assert_eq!(
+            read_request(&mut c, &mut carry, &mut |_| {}).unwrap().path,
+            "/b"
+        );
+        assert_eq!(
+            read_request(&mut c, &mut carry, &mut |_| {}).unwrap_err(),
+            ReadError::Closed
+        );
     }
 
     #[test]
     fn oversized_and_malformed_requests_are_refused() {
         let big = format!("GET / HTTP/1.1\r\nX: {}\r\n\r\n", "a".repeat(HEAD_MAX));
         assert_eq!(read(big.as_bytes()).unwrap_err(), ReadError::TooBig);
-        let body = format!("POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n", BODY_MAX + 1);
+        let body = format!(
+            "POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n",
+            BODY_MAX + 1
+        );
         assert_eq!(read(body.as_bytes()).unwrap_err(), ReadError::TooBig);
-        assert_eq!(read(b"GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"GET noslash HTTP/1.1\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"get / HTTP/1.1\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"GET / HTTP/2\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"GET / HTTP/1.1\r\nbad header\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"POST / HTTP/1.1\r\nContent-Length: x\r\n\r\n").unwrap_err(), ReadError::Malformed);
-        assert_eq!(read(b"GET / HTTP/1.1\r\n").unwrap_err(), ReadError::Malformed, "cut off mid-head");
+        assert_eq!(
+            read(b"GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"GET noslash HTTP/1.1\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"get / HTTP/1.1\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"GET / HTTP/2\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"GET / HTTP/1.1\r\nbad header\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"POST / HTTP/1.1\r\nContent-Length: x\r\n\r\n").unwrap_err(),
+            ReadError::Malformed
+        );
+        assert_eq!(
+            read(b"GET / HTTP/1.1\r\n").unwrap_err(),
+            ReadError::Malformed,
+            "cut off mid-head"
+        );
     }
 
     #[test]

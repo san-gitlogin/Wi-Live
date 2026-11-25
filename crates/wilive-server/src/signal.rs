@@ -78,7 +78,10 @@ impl Strikes {
         blocked
     }
     pub fn strike(&self, ip: IpAddr) {
-        lock(&self.0).entry(ip).or_default().push_back(Instant::now());
+        lock(&self.0)
+            .entry(ip)
+            .or_default()
+            .push_back(Instant::now());
     }
 }
 
@@ -109,12 +112,18 @@ fn read(ws: &mut WebSocket<TcpStream>, deadline: Instant) -> Result<Got, String>
         if left.is_zero() {
             return Ok(Got::Quiet);
         }
-        let _ = ws.get_ref().set_read_timeout(Some(left.min(Duration::from_millis(250))));
+        let _ = ws
+            .get_ref()
+            .set_read_timeout(Some(left.min(Duration::from_millis(250))));
         match ws.read() {
             Ok(Message::Text(t)) => return Ok(Got::Msg(serde_json::from_str(&t).ok())),
             Ok(Message::Close(_)) => return Err("closed".into()),
             Ok(_) => continue,
-            Err(tungstenite::Error::Io(e)) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => continue,
+            Err(tungstenite::Error::Io(e))
+                if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
+            {
+                continue
+            }
             Err(e) => return Err(e.to_string()),
         }
     }
@@ -145,7 +154,9 @@ pub fn upgrade(mut stream: TcpStream, key: &str) -> std::io::Result<WebSocket<Tc
     }
     h.push_str("\r\n");
     stream.write_all(h.as_bytes())?;
-    let cfg = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE)).max_frame_size(Some(MAX_MESSAGE));
+    let cfg = WebSocketConfig::default()
+        .max_message_size(Some(MAX_MESSAGE))
+        .max_frame_size(Some(MAX_MESSAGE));
     Ok(WebSocket::from_raw_socket(stream, Role::Server, Some(cfg)))
 }
 
@@ -160,7 +171,15 @@ impl Drop for LiveGuard<'_> {
     }
 }
 
-pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &AtomicBool, mut ws: WebSocket<TcpStream>, peer: SocketAddr, agent: String) -> Result<(), String> {
+pub fn serve(
+    st: &Arc<State>,
+    media: &Media,
+    strikes: &Strikes,
+    stopping: &AtomicBool,
+    mut ws: WebSocket<TcpStream>,
+    peer: SocketAddr,
+    agent: String,
+) -> Result<(), String> {
     let local_ip = ws.get_ref().local_addr().map_err(|e| e.to_string())?.ip();
     let _ = ws.get_ref().set_write_timeout(Some(Duration::from_secs(5)));
     let _ = ws.get_ref().set_nodelay(true);
@@ -231,9 +250,15 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
         }
         l.push(live.clone());
     }
-    let _guard = LiveGuard { st, live: live.clone() };
+    let _guard = LiveGuard {
+        st,
+        live: live.clone(),
+    };
 
-    let fp_mac = lock(&st.devices).fp_mac(&id, &chal, &media.fp).map(hex::encode).unwrap_or_default();
+    let fp_mac = lock(&st.devices)
+        .fp_mac(&id, &chal, &media.fp)
+        .map(hex::encode)
+        .unwrap_or_default();
     let mut shown = (media.displays)();
     send(&mut ws, {
         let mut r = serde_json::json!({"t":"ready","name":st.name,"fp":media.fp,"fp_mac":fp_mac,
@@ -258,11 +283,18 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
     let prepared = match rtc::prepare(&sdp, local_ip, media.cert.clone()) {
         Ok(p) => p,
         Err(e) => {
-            let _ = send(&mut ws, serde_json::json!({"t":"error","reason":"offer","detail":e.to_string()}));
+            let _ = send(
+                &mut ws,
+                serde_json::json!({"t":"error","reason":"offer","detail":e.to_string()}),
+            );
             return Err(e.to_string());
         }
     };
-    send(&mut ws, serde_json::json!({"t":"answer","sdp":prepared.answer})).map_err(|e| e.to_string())?;
+    send(
+        &mut ws,
+        serde_json::json!({"t":"answer","sdp":prepared.answer}),
+    )
+    .map_err(|e| e.to_string())?;
     st.record(Kind::Watching, &name, &addr, "");
     let started = Instant::now();
 
@@ -305,39 +337,56 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
         _ => None,
     };
     let mut told_audio = media.audio.as_ref().map(|h| h.state());
-    let (fwd_tx, fwd_stop, fwd_ctl, fwd_ended) = (tx.clone(), stop.clone(), control.clone(), ended.clone());
-    let forwarder = std::thread::Builder::new().name("rtc-fwd".into()).spawn(move || {
-        while !fwd_stop.load(Ordering::Relaxed) {
-            match vrx.recv_timeout(Duration::from_millis(500)) {
-                Ok(m) => {
-                    if fwd_tx.try_send(m.into()).is_err() {
-                        fwd_ctl.request_keyframe();
+    let (fwd_tx, fwd_stop, fwd_ctl, fwd_ended) =
+        (tx.clone(), stop.clone(), control.clone(), ended.clone());
+    let forwarder = std::thread::Builder::new()
+        .name("rtc-fwd".into())
+        .spawn(move || {
+            while !fwd_stop.load(Ordering::Relaxed) {
+                match vrx.recv_timeout(Duration::from_millis(500)) {
+                    Ok(m) => {
+                        if fwd_tx.try_send(m.into()).is_err() {
+                            fwd_ctl.request_keyframe();
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(_) => {
+                        lock(&fwd_ended).get_or_insert(End::PipelineGone);
+                        fwd_stop.store(true, Ordering::Relaxed);
+                        break;
                     }
                 }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(_) => {
-                    lock(&fwd_ended).get_or_insert(End::PipelineGone);
-                    fwd_stop.store(true, Ordering::Relaxed);
-                    break;
-                }
             }
-        }
-    });
+        });
     let (s2, f2, e2, ctl2) = (stop.clone(), fps.clone(), ended.clone(), control.clone());
-    let session = std::thread::Builder::new().name("rtc".into()).spawn(move || {
-        let end = rtc::run(prepared, rx, tx, ctl2, s2.clone(), |n| f2.store(n, Ordering::Relaxed));
-        lock(&e2).get_or_insert(end);
-        s2.store(true, Ordering::Relaxed);
-    });
+    let session = std::thread::Builder::new()
+        .name("rtc".into())
+        .spawn(move || {
+            let end = rtc::run(prepared, rx, tx, ctl2, s2.clone(), |n| {
+                f2.store(n, Ordering::Relaxed)
+            });
+            lock(&e2).get_or_insert(end);
+            s2.store(true, Ordering::Relaxed);
+        });
 
     let mut last_stats = Instant::now();
     let mut last_displays = Instant::now();
-    let current = |list: &[Display], d: u32| if d == MAIN { display::main_id(list) } else { Some(d) };
+    let current = |list: &[Display], d: u32| {
+        if d == MAIN {
+            display::main_id(list)
+        } else {
+            Some(d)
+        }
+    };
     let mut told = current(&shown, MAIN);
     live.display.store(told.unwrap_or(0), Ordering::Relaxed);
     let mut asked: Option<u32> = None;
     let mut forgotten = false;
-    while !stop.load(Ordering::Relaxed) && !stopping.load(Ordering::Relaxed) && !live.stop.load(Ordering::Relaxed) && !st.paused.load(Ordering::Relaxed) {
+    while !stop.load(Ordering::Relaxed)
+        && !stopping.load(Ordering::Relaxed)
+        && !live.stop.load(Ordering::Relaxed)
+        && !st.paused.load(Ordering::Relaxed)
+    {
         match read(&mut ws, Instant::now() + Duration::from_millis(250)) {
             Ok(Got::Msg(Some(FromViewer::Key))) => control.browser_wants_keyframe(),
             Ok(Got::Msg(Some(FromViewer::Display { id }))) => {
@@ -373,7 +422,12 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
                 }
                 shown = now;
                 let id = current(&shown, control.display());
-                if send(&mut ws, serde_json::json!({"t":"displays","displays":shown,"display":id})).is_err() {
+                if send(
+                    &mut ws,
+                    serde_json::json!({"t":"displays","displays":shown,"display":id}),
+                )
+                .is_err()
+                {
                     break;
                 }
                 told = id;
@@ -385,7 +439,12 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
             if moved {
                 asked = None;
             }
-            if send(&mut ws, serde_json::json!({"t":"display","id":id,"fallback":moved})).is_err() {
+            if send(
+                &mut ws,
+                serde_json::json!({"t":"display","id":id,"fallback":moved}),
+            )
+            .is_err()
+            {
                 break;
             }
             told = id;
@@ -440,7 +499,12 @@ pub fn serve(st: &Arc<State>, media: &Media, strikes: &Strikes, stopping: &Atomi
         format!("{end:?}")
     };
     let secs = started.elapsed().as_secs();
-    st.record(Kind::Ended, &name, &addr, &format!("after {}m {}s ({reason})", secs / 60, secs % 60));
+    st.record(
+        Kind::Ended,
+        &name,
+        &addr,
+        &format!("after {}m {}s ({reason})", secs / 60, secs % 60),
+    );
     let _ = send(&mut ws, serde_json::json!({"t":"end","reason":reason}));
     let _ = ws.close(None);
     Ok(())
@@ -464,6 +528,9 @@ mod tests {
         s.strike(lo);
         assert!(s.blocked(lan));
         assert!(!s.blocked(lo), "the owner's window is on loopback");
-        assert!(!s.blocked("192.168.0.51".parse().unwrap()), "only that address");
+        assert!(
+            !s.blocked("192.168.0.51".parse().unwrap()),
+            "only that address"
+        );
     }
 }

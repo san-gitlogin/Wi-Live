@@ -82,7 +82,13 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(name: &str, owner_token: String, devices: Devices, log: AccessLog, persist: Box<dyn Persist>) -> Self {
+    pub fn new(
+        name: &str,
+        owner_token: String,
+        devices: Devices,
+        log: AccessLog,
+        persist: Box<dyn Persist>,
+    ) -> Self {
         State {
             name: wilive_core::pending::clean_name(name),
             owner_token,
@@ -109,7 +115,13 @@ impl State {
     pub fn record(&self, kind: Kind, who: &str, addr: &str, detail: &str) {
         let json = {
             let mut l = lock(&self.log);
-            l.push(Event { at: unix_now(), kind, who: who.into(), addr: addr.into(), detail: detail.into() });
+            l.push(Event {
+                at: unix_now(),
+                kind,
+                who: who.into(),
+                addr: addr.into(),
+                detail: detail.into(),
+            });
             l.to_json()
         };
         self.persist.save_log(&json);

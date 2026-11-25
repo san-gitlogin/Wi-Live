@@ -6,8 +6,8 @@
 //! Prints what it captured and encoded, checks the stream's structure, and
 //! writes check_capture.h264 (play it with ffplay or VLC to see the picture).
 
-use wilive_stream::frame::{nal_units, Frame};
 use std::time::{Duration, Instant};
+use wilive_stream::frame::{nal_units, Frame};
 
 fn main() {
     let mut fails = 0;

@@ -70,24 +70,65 @@ fn main() {
                     wilive_stream::audio::Input::System => (48_000, 2),
                     wilive_stream::audio::Input::Microphone => (44_100, 1),
                 };
-                Ok(wilive_stream::audio::test_sound(wilive_stream::epoch(), rate, ch, 480, sink))
+                Ok(wilive_stream::audio::test_sound(
+                    wilive_stream::epoch(),
+                    rate,
+                    ch,
+                    480,
+                    sink,
+                ))
             })
         };
-        Arc::new(wilive_stream::audio::AudioHub::start(opener, wilive_stream::audio::Settings::new(true, false)))
+        Arc::new(wilive_stream::audio::AudioHub::start(
+            opener,
+            wilive_stream::audio::Settings::new(true, false),
+        ))
     });
     let token = wilive_core::pair::random_hex(24);
     let name = std::env::var("WILIVE_NAME").unwrap_or_else(|_| "Test computer".into());
-    let state = Arc::new(State::new(&name, token.clone(), Default::default(), Default::default(), Box::new(NoPersist)));
+    let state = Arc::new(State::new(
+        &name,
+        token.clone(),
+        Default::default(),
+        Default::default(),
+        Box::new(NoPersist),
+    ));
     let f3 = fake.clone();
-    let displays: wilive_server::signal::Displays = Box::new(move || if real { wilive_stream::display::list() } else { f3.list() });
-    let port = std::env::var("WILIVE_PORT").ok().and_then(|p| p.parse().ok());
-    let srv = wilive_server::start(port, state, Media { pipeline: pipeline.clone(), audio, cert, fp: fp.clone(), displays }).expect("listening");
-    println!("{}", serde_json::json!({"port": srv.port, "owner": token, "fp": fp}));
+    let displays: wilive_server::signal::Displays = Box::new(move || {
+        if real {
+            wilive_stream::display::list()
+        } else {
+            f3.list()
+        }
+    });
+    let port = std::env::var("WILIVE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok());
+    let srv = wilive_server::start(
+        port,
+        state,
+        Media {
+            pipeline: pipeline.clone(),
+            audio,
+            cert,
+            fp: fp.clone(),
+            displays,
+        },
+    )
+    .expect("listening");
+    println!(
+        "{}",
+        serde_json::json!({"port": srv.port, "owner": token, "fp": fp})
+    );
     std::thread::spawn(move || {
         for line in std::io::stdin().lines().map_while(Result::ok) {
             match line.trim() {
-                "still" => wilive_stream::pattern::HELD.store(true, std::sync::atomic::Ordering::Relaxed),
-                "move" => wilive_stream::pattern::HELD.store(false, std::sync::atomic::Ordering::Relaxed),
+                "still" => {
+                    wilive_stream::pattern::HELD.store(true, std::sync::atomic::Ordering::Relaxed)
+                }
+                "move" => {
+                    wilive_stream::pattern::HELD.store(false, std::sync::atomic::Ordering::Relaxed)
+                }
                 l => {
                     if let Some(id) = l.strip_prefix("unplug ").and_then(|s| s.parse().ok()) {
                         fake.unplug(id);
@@ -98,6 +139,10 @@ fn main() {
     });
     loop {
         std::thread::sleep(std::time::Duration::from_secs(5));
-        eprintln!("watching={} pipeline_viewers={}", srv.state.watching(), pipeline.viewers());
+        eprintln!(
+            "watching={} pipeline_viewers={}",
+            srv.state.watching(),
+            pipeline.viewers()
+        );
     }
 }

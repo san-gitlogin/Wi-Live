@@ -39,7 +39,9 @@ pub fn private_peer(ip: IpAddr) -> bool {
             if let Some(m) = v.to_ipv4_mapped() {
                 return private_peer(IpAddr::V4(m));
             }
-            v.is_loopback() || (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80
+            v.is_loopback()
+                || (v.segments()[0] & 0xfe00) == 0xfc00
+                || (v.segments()[0] & 0xffc0) == 0xfe80
         }
     }
 }
@@ -50,12 +52,28 @@ pub fn private_peer(ip: IpAddr) -> bool {
 pub fn host_ok(host: &str) -> bool {
     let h = if let Some(rest) = host.strip_prefix('[') {
         // [v6]:port
-        return rest.split(']').next().is_some_and(|v6| v6.parse::<std::net::Ipv6Addr>().is_ok());
+        return rest
+            .split(']')
+            .next()
+            .is_some_and(|v6| v6.parse::<std::net::Ipv6Addr>().is_ok());
     } else {
-        host.rsplit_once(':').map(|(h, p)| if p.bytes().all(|c| c.is_ascii_digit()) { h } else { host }).unwrap_or(host)
+        host.rsplit_once(':')
+            .map(|(h, p)| {
+                if p.bytes().all(|c| c.is_ascii_digit()) {
+                    h
+                } else {
+                    host
+                }
+            })
+            .unwrap_or(host)
     };
     let h = h.to_ascii_lowercase();
-    h.parse::<IpAddr>().is_ok() || h == "localhost" || (h.ends_with(".local") && h.len() > 6 && h.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'.'))
+    h.parse::<IpAddr>().is_ok()
+        || h == "localhost"
+        || (h.ends_with(".local")
+            && h.len() > 6
+            && h.bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'.'))
 }
 
 /// For requests that change something: an Origin, when sent, must be this very
@@ -78,8 +96,13 @@ pub struct Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        state::lock(&self.state.live).iter().for_each(|l| l.stop.store(true, Ordering::Relaxed));
-        let _ = TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], self.port)), Duration::from_millis(200));
+        state::lock(&self.state.live)
+            .iter()
+            .for_each(|l| l.stop.store(true, Ordering::Relaxed));
+        let _ = TcpStream::connect_timeout(
+            &SocketAddr::from(([127, 0, 0, 1], self.port)),
+            Duration::from_millis(200),
+        );
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
@@ -117,7 +140,10 @@ impl Ctx {
     }
     /// The addresses a viewer can type, for the owner's window.
     fn urls(&self) -> Vec<String> {
-        lan_addrs().into_iter().map(|ip| format!("http://{ip}:{}/", self.port)).collect()
+        lan_addrs()
+            .into_iter()
+            .map(|ip| format!("http://{ip}:{}/", self.port))
+            .collect()
     }
 }
 
@@ -145,32 +171,52 @@ pub fn start(port: Option<u16>, state: Arc<State>, media: Media) -> std::io::Res
         None => PORTS
             .clone()
             .find_map(|p| TcpListener::bind(("0.0.0.0", p)).ok())
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::AddrInUse, "no free port in 47900-47919"))?,
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::AddrInUse, "no free port in 47900-47919")
+            })?,
     };
     let port = listener.local_addr()?.port();
     let stop = Arc::new(AtomicBool::new(false));
-    let ctx = Arc::new(Ctx { state: state.clone(), media, strikes: Strikes::default(), stop: stop.clone(), conns: Mutex::default(), port });
-    let thread = std::thread::Builder::new().name("wilive-accept".into()).spawn(move || {
-        for conn in listener.incoming() {
-            if ctx.stop.load(Ordering::Relaxed) {
-                break;
+    let ctx = Arc::new(Ctx {
+        state: state.clone(),
+        media,
+        strikes: Strikes::default(),
+        stop: stop.clone(),
+        conns: Mutex::default(),
+        port,
+    });
+    let thread = std::thread::Builder::new()
+        .name("wilive-accept".into())
+        .spawn(move || {
+            for conn in listener.incoming() {
+                if ctx.stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                let Ok(stream) = conn else { continue };
+                let Ok(peer) = stream.peer_addr() else {
+                    continue;
+                };
+                if !private_peer(peer.ip()) || !ctx.claim(peer.ip()) {
+                    continue; // dropped: closes the connection
+                }
+                let c = ctx.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("wilive-conn".into())
+                    .spawn(move || {
+                        connection(&c, stream, peer);
+                        c.release(peer.ip());
+                    });
+                if spawned.is_err() {
+                    ctx.release(peer.ip());
+                }
             }
-            let Ok(stream) = conn else { continue };
-            let Ok(peer) = stream.peer_addr() else { continue };
-            if !private_peer(peer.ip()) || !ctx.claim(peer.ip()) {
-                continue; // dropped: closes the connection
-            }
-            let c = ctx.clone();
-            let spawned = std::thread::Builder::new().name("wilive-conn".into()).spawn(move || {
-                connection(&c, stream, peer);
-                c.release(peer.ip());
-            });
-            if spawned.is_err() {
-                ctx.release(peer.ip());
-            }
-        }
-    })?;
-    Ok(Server { port, state, stop, thread: Some(thread) })
+        })?;
+    Ok(Server {
+        port,
+        state,
+        stop,
+        thread: Some(thread),
+    })
 }
 
 fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
@@ -187,7 +233,8 @@ fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
             let s2 = writer.try_clone();
             let mut set = |d: Duration| {
                 if let Ok(s) = &s2 {
-                    let _ = s.set_read_timeout(Some(if n == 0 { d } else { d.min(KEEP_ALIVE_IDLE) }));
+                    let _ =
+                        s.set_read_timeout(Some(if n == 0 { d } else { d.min(KEEP_ALIVE_IDLE) }));
                 }
             };
             read_request(&mut reader, &mut carry, &mut set)
@@ -200,7 +247,12 @@ fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
                 return;
             }
             Err(ReadError::Malformed) | Err(ReadError::Slow) => {
-                let _ = write_response(&mut writer, &Response::error(400, "bad_request"), false, false);
+                let _ = write_response(
+                    &mut writer,
+                    &Response::error(400, "bad_request"),
+                    false,
+                    false,
+                );
                 return;
             }
         };
@@ -218,12 +270,19 @@ fn connection(c: &Arc<Ctx>, stream: TcpStream, peer: SocketAddr) {
                 return;
             }
             let Some(key) = req.header("sec-websocket-key").map(str::to_string) else {
-                let _ = write_response(&mut writer, &Response::error(400, "bad_request"), false, false);
+                let _ = write_response(
+                    &mut writer,
+                    &Response::error(400, "bad_request"),
+                    false,
+                    false,
+                );
                 return;
             };
             let agent = api::agent_summary(req.header("user-agent").unwrap_or(""));
             if let Ok(ws) = signal::upgrade(writer, &key) {
-                if let Err(e) = signal::serve(&c.state, &c.media, &c.strikes, &c.stop, ws, peer, agent) {
+                if let Err(e) =
+                    signal::serve(&c.state, &c.media, &c.strikes, &c.stop, ws, peer, agent)
+                {
                     log::debug!("viewer {peer}: {e}");
                 }
             }
@@ -242,7 +301,8 @@ fn route(c: &Ctx, req: &Request, peer: IpAddr) -> Response {
         return r;
     }
     match req.method.as_str() {
-        "GET" | "HEAD" => web::serve(&req.path, req.header("if-none-match")).unwrap_or_else(|| Response::error(404, "unknown")),
+        "GET" | "HEAD" => web::serve(&req.path, req.header("if-none-match"))
+            .unwrap_or_else(|| Response::error(404, "unknown")),
         _ => Response::error(405, "method"),
     }
 }
@@ -253,20 +313,51 @@ mod tests {
 
     #[test]
     fn only_home_network_addresses_are_answered() {
-        for ok in ["192.168.0.5", "10.1.2.3", "172.16.0.1", "127.0.0.1", "169.254.1.1", "::1", "fe80::1", "fd00::5", "::ffff:192.168.1.2"] {
+        for ok in [
+            "192.168.0.5",
+            "10.1.2.3",
+            "172.16.0.1",
+            "127.0.0.1",
+            "169.254.1.1",
+            "::1",
+            "fe80::1",
+            "fd00::5",
+            "::ffff:192.168.1.2",
+        ] {
             assert!(private_peer(ok.parse().unwrap()), "{ok}");
         }
-        for no in ["8.8.8.8", "100.64.0.1", "2001:4860::8888", "::ffff:1.1.1.1", "172.32.0.1"] {
+        for no in [
+            "8.8.8.8",
+            "100.64.0.1",
+            "2001:4860::8888",
+            "::ffff:1.1.1.1",
+            "172.32.0.1",
+        ] {
             assert!(!private_peer(no.parse().unwrap()), "{no}");
         }
     }
 
     #[test]
     fn the_host_must_name_this_computer() {
-        for ok in ["192.168.0.5:47900", "127.0.0.1", "localhost:47900", "santhus-mac.local:47900", "[fe80::1]:47900", "[::1]"] {
+        for ok in [
+            "192.168.0.5:47900",
+            "127.0.0.1",
+            "localhost:47900",
+            "santhus-mac.local:47900",
+            "[fe80::1]:47900",
+            "[::1]",
+        ] {
             assert!(host_ok(ok), "{ok}");
         }
-        for no in ["evil.example.com", "evil.example.com:47900", "attacker.local.evil.com", ".local", "a b.local", "[nope]:1", ""] {
+        for no in [
+            "evil.example.com",
+            "evil.example.com:47900",
+            "attacker.local.evil.com",
+            ".local",
+            "a b.local",
+            "[nope]:1",
+            "",
+        ] {
             assert!(!host_ok(no), "{no}");
         }
     }
@@ -283,13 +374,33 @@ mod tests {
                 h.insert("upgrade".into(), "websocket".into());
                 h.insert("connection".into(), "Upgrade".into());
             }
-            Request { method: m.into(), path: "/".into(), query: HashMap::new(), headers: h, body: vec![] }
+            Request {
+                method: m.into(),
+                path: "/".into(),
+                query: HashMap::new(),
+                headers: h,
+                body: vec![],
+            }
         };
-        assert!(origin_ok(&mk("POST", Some("http://192.168.0.5:47900"), false)));
+        assert!(origin_ok(&mk(
+            "POST",
+            Some("http://192.168.0.5:47900"),
+            false
+        )));
         assert!(origin_ok(&mk("GET", None, false)), "a plain page load");
         assert!(!origin_ok(&mk("POST", None, false)));
-        assert!(!origin_ok(&mk("POST", Some("http://evil.example.com"), false)));
-        assert!(!origin_ok(&mk("GET", None, true)), "a WebSocket always needs it");
-        assert!(!origin_ok(&mk("GET", Some("http://192.168.0.5:47901"), true)), "another port is another origin");
+        assert!(!origin_ok(&mk(
+            "POST",
+            Some("http://evil.example.com"),
+            false
+        )));
+        assert!(
+            !origin_ok(&mk("GET", None, true)),
+            "a WebSocket always needs it"
+        );
+        assert!(
+            !origin_ok(&mk("GET", Some("http://192.168.0.5:47901"), true)),
+            "another port is another origin"
+        );
     }
 }

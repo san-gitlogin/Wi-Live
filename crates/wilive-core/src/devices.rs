@@ -23,13 +23,31 @@ pub struct Device {
 
 impl std::fmt::Debug for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Device").field("id", &self.id).field("name", &self.name).finish_non_exhaustive()
+        f.debug_struct("Device")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .finish_non_exhaustive()
     }
 }
 
 impl Device {
-    pub fn new(id: String, name: String, agent: String, addr: String, key: &DeviceKey, now: u64) -> Self {
-        Device { id, name, agent, added: now, last_seen: now, last_addr: addr, key: hex::encode(key.as_bytes()) }
+    pub fn new(
+        id: String,
+        name: String,
+        agent: String,
+        addr: String,
+        key: &DeviceKey,
+        now: u64,
+    ) -> Self {
+        Device {
+            id,
+            name,
+            agent,
+            added: now,
+            last_seen: now,
+            last_addr: addr,
+            key: hex::encode(key.as_bytes()),
+        }
     }
     fn key(&self) -> Option<DeviceKey> {
         let b: [u8; 32] = hex::decode(&self.key).ok()?.try_into().ok()?;
@@ -73,7 +91,11 @@ impl Devices {
     pub fn add(&mut self, d: Device) -> Option<Device> {
         self.list.retain(|x| x.id != d.id);
         let dropped = if self.list.len() >= MAX_DEVICES {
-            let (i, _) = self.list.iter().enumerate().min_by_key(|(_, x)| x.last_seen)?;
+            let (i, _) = self
+                .list
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, x)| x.last_seen)?;
             Some(self.list.remove(i))
         } else {
             None
@@ -99,7 +121,10 @@ impl Devices {
     }
 
     pub fn name_of(&self, id: &str) -> Option<String> {
-        self.list.iter().find(|x| x.id == id).map(|d| d.name.clone())
+        self.list
+            .iter()
+            .find(|x| x.id == id)
+            .map(|d| d.name.clone())
     }
 
     /// A session's proof: the device exists and the HMAC over this connection's
@@ -135,7 +160,7 @@ impl Devices {
                 last_addr: d.last_addr.clone(),
             })
             .collect();
-        v.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+        v.sort_by_key(|a| std::cmp::Reverse(a.last_seen));
         v
     }
 }
@@ -146,7 +171,14 @@ mod tests {
     use crate::pair::hello_mac;
 
     fn dev(id: &str, seen: u64) -> Device {
-        let mut d = Device::new(id.into(), id.into(), "Chrome".into(), "192.168.0.2".into(), &DeviceKey::from_bytes([id.len() as u8; 32]), 1);
+        let mut d = Device::new(
+            id.into(),
+            id.into(),
+            "Chrome".into(),
+            "192.168.0.2".into(),
+            &DeviceKey::from_bytes([id.len() as u8; 32]),
+            1,
+        );
         d.last_seen = seen;
         d
     }
@@ -155,7 +187,14 @@ mod tests {
     fn a_device_proves_itself_with_its_key_and_this_challenge() {
         let mut ds = Devices::default();
         let k = DeviceKey::from_bytes([7; 32]);
-        ds.add(Device::new("d1".into(), "Pixel".into(), "".into(), "".into(), &k, 1));
+        ds.add(Device::new(
+            "d1".into(),
+            "Pixel".into(),
+            "".into(),
+            "".into(),
+            &k,
+            1,
+        ));
         let mac = hello_mac(&k, "d1", "ab");
         assert!(ds.admit("d1", "ab", &mac, "192.168.0.9", 50));
         assert_eq!(ds.views()[0].last_seen, 50);
@@ -169,7 +208,14 @@ mod tests {
     fn a_forgotten_device_can_no_longer_watch() {
         let mut ds = Devices::default();
         let k = DeviceKey::from_bytes([7; 32]);
-        ds.add(Device::new("d1".into(), "Pixel".into(), "".into(), "".into(), &k, 1));
+        ds.add(Device::new(
+            "d1".into(),
+            "Pixel".into(),
+            "".into(),
+            "".into(),
+            &k,
+            1,
+        ));
         assert!(ds.forget("d1"));
         assert!(!ds.admit("d1", "ab", &hello_mac(&k, "d1", "ab"), "x", 2));
         assert!(!ds.forget("d1"));
@@ -194,7 +240,10 @@ mod tests {
         assert_eq!(back.views(), ds.views());
         let shown = serde_json::to_string(&ds.views()).unwrap();
         assert!(!shown.contains("key"), "{shown}");
-        assert!(!format!("{:?}", ds.list[0]).contains("0101"), "Debug hides the key");
+        assert!(
+            !format!("{:?}", ds.list[0]).contains("0101"),
+            "Debug hides the key"
+        );
     }
 
     #[test]

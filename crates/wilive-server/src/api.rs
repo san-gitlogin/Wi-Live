@@ -16,7 +16,11 @@ use wilive_core::pending::{Refuse, Status};
 mod subtle_eq {
     /// Constant-time string equality for the owner token.
     pub fn ct_eq(a: &str, b: &str) -> bool {
-        a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+        a.len() == b.len()
+            && a.bytes()
+                .zip(b.bytes())
+                .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+                == 0
     }
 }
 
@@ -119,7 +123,10 @@ struct On {
 
 /// Whether this request comes from the owner's window.
 pub fn is_owner(st: &State, req: &Request, peer: IpAddr) -> bool {
-    peer.is_loopback() && req.header("x-wilive-owner").is_some_and(|t| ct_eq(t, &st.owner_token))
+    peer.is_loopback()
+        && req
+            .header("x-wilive-owner")
+            .is_some_and(|t| ct_eq(t, &st.owner_token))
 }
 
 /// Routes `/api/...`. `None`: not an API path.
@@ -130,10 +137,13 @@ pub fn handle(st: &Arc<State>, req: &Request, peer: IpAddr, urls: &[String]) -> 
     }
     let post = req.method == "POST";
     Some(match (req.method.as_str(), p) {
-        ("GET", "/api/info") => Response::json(200, &serde_json::json!({
-            "product": "Wi-Live", "version": VERSION, "name": st.name,
-            "paused": st.paused.load(Ordering::Relaxed),
-        })),
+        ("GET", "/api/info") => Response::json(
+            200,
+            &serde_json::json!({
+                "product": "Wi-Live", "version": VERSION, "name": st.name,
+                "paused": st.paused.load(Ordering::Relaxed),
+            }),
+        ),
         ("POST", "/api/pair/start") => pair_start(st, req, peer),
         ("POST", "/api/pair/reveal") => pair_reveal(st, req, peer),
         ("GET", "/api/pair/status") => {
@@ -141,7 +151,9 @@ pub fn handle(st: &Arc<State>, req: &Request, peer: IpAddr, urls: &[String]) -> 
             match lock(&st.pending).status(&req_id, peer, st.ms()) {
                 Ok(Status::Started) => Response::json(200, &serde_json::json!({"state":"started"})),
                 Ok(Status::Waiting) => Response::json(200, &serde_json::json!({"state":"waiting"})),
-                Ok(Status::Allowed { device }) => Response::json(200, &serde_json::json!({"state":"allowed","device":device})),
+                Ok(Status::Allowed { device }) => {
+                    Response::json(200, &serde_json::json!({"state":"allowed","device":device}))
+                }
                 Ok(Status::Denied) => Response::json(200, &serde_json::json!({"state":"denied"})),
                 Err(r) => refuse(r),
             }
@@ -152,7 +164,9 @@ pub fn handle(st: &Arc<State>, req: &Request, peer: IpAddr, urls: &[String]) -> 
             }
             owner(st, req, urls)
         }
-        (_, "/api/info" | "/api/pair/start" | "/api/pair/reveal" | "/api/pair/status") => Response::error(405, "method"),
+        (_, "/api/info" | "/api/pair/start" | "/api/pair/reveal" | "/api/pair/status") => {
+            Response::error(405, "method")
+        }
         _ if post => Response::error(404, "unknown"),
         _ => Response::error(404, "unknown"),
     })
@@ -170,9 +184,21 @@ fn pair_start(st: &State, req: &Request, peer: IpAddr) -> Response {
         return Response::error(503, "paused");
     }
     let agent = agent_summary(req.header("user-agent").unwrap_or(""));
-    let r = lock(&st.pending).start(&b.name, &agent, peer, v_pub, commit, Responder::new(), random_hex(16), st.ms());
+    let r = lock(&st.pending).start(
+        &b.name,
+        &agent,
+        peer,
+        v_pub,
+        commit,
+        Responder::new(),
+        random_hex(16),
+        st.ms(),
+    );
     match r {
-        Ok((id, a_pub, n_a)) => Response::json(200, &serde_json::json!({"req": id, "a_pub": hex::encode(a_pub), "n_a": hex::encode(n_a)})),
+        Ok((id, a_pub, n_a)) => Response::json(
+            200,
+            &serde_json::json!({"req": id, "a_pub": hex::encode(a_pub), "n_a": hex::encode(n_a)}),
+        ),
         Err(e) => refuse(e),
     }
 }
@@ -202,7 +228,12 @@ fn pair_reveal(st: &State, req: &Request, peer: IpAddr) -> Response {
         Err(e) => {
             drop(pend);
             if e == Refuse::Proof {
-                st.record(Kind::Refused, "", &peer.to_string(), "pairing proof did not match");
+                st.record(
+                    Kind::Refused,
+                    "",
+                    &peer.to_string(),
+                    "pairing proof did not match",
+                );
             }
             refuse(e)
         }
@@ -236,12 +267,22 @@ fn owner(st: &State, req: &Request, urls: &[String]) -> Response {
                 Err(e) => return refuse(e),
             };
             let dropped = lock(&st.devices).add(Device::new(
-                a.device.clone(), a.name.clone(), a.agent.clone(), a.addr.to_string(), &a.key, crate::state::unix_now(),
+                a.device.clone(),
+                a.name.clone(),
+                a.agent.clone(),
+                a.addr.to_string(),
+                &a.key,
+                crate::state::unix_now(),
             ));
             st.save_devices();
             st.record(Kind::PairAllowed, &a.name, &a.addr.to_string(), &a.agent);
             if let Some(d) = dropped {
-                st.record(Kind::Forgotten, &d.name, "", "the device list was full; seen longest ago");
+                st.record(
+                    Kind::Forgotten,
+                    &d.name,
+                    "",
+                    "the device list was full; seen longest ago",
+                );
             }
             ok()
         }
@@ -250,7 +291,10 @@ fn owner(st: &State, req: &Request, urls: &[String]) -> Response {
                 Ok(b) => b,
                 Err(r) => return r,
             };
-            let v = lock(&st.pending).views(st.ms()).into_iter().find(|v| v.req == b.req);
+            let v = lock(&st.pending)
+                .views(st.ms())
+                .into_iter()
+                .find(|v| v.req == b.req);
             match lock(&st.pending).deny(&b.req, st.ms()) {
                 Ok(()) => {
                     if let Some(v) = v {
