@@ -51,6 +51,7 @@
       <p class="muted m0">This device is not allowed yet. Ask once; the person at the computer allows it there.</p>
       <label class="field"><span>Name this device</span><input id="devName" maxlength="40" autocomplete="off" spellcheck="false"></label>
       <button class="btn primary" id="btnAsk" type="button">Ask to watch</button>
+      <p class="hint" id="iosHint" hidden>Opened from the camera? Tap the Safari icon first, so this phone is remembered. Then Share, Add to Home Screen opens it straight to the picture, full screen.</p>
       <div class="msg err" id="pairErr" role="alert" hidden></div>
     </div>
     <div class="narrow card stack" id="pairCode" hidden>
@@ -86,6 +87,7 @@
     <button class="mi" id="mPip" role="menuitem" type="button"><svg><use href="#i-pip"/></svg>Picture in picture<kbd>P</kbd></button>
     <button class="mi" id="mShot" role="menuitem" type="button"><svg><use href="#i-camera"/></svg>Save a snapshot<kbd>C</kbd></button>
     <button class="mi" id="mStats" role="menuitem" type="button"><svg><use href="#i-stats"/></svg>Show stats<kbd>S</kbd></button>
+    <button class="mi" id="mHome" role="menuitem" type="button" hidden><svg><use href="#i-full"/></svg>Add to Home Screen</button>
     <button class="mi" id="mKeys" role="menuitem" type="button"><svg><use href="#i-keys"/></svg>Keyboard shortcuts<kbd>?</kbd></button>
   </div>
   <button class="chip zoom" id="zoomChip" type="button" title="Back to 100% (0)" hidden>100%</button>
@@ -104,6 +106,17 @@
         <dt><kbd>S</kbd></dt><dd>Stats</dd>
       </dl>
       <p class="note">On a touch screen: pinch to zoom, drag to look around, double-tap to zoom in or out. With all displays: drag a display onto another to swap them, double-tap one to make it the big one.</p>
+    </div>
+  </div>
+  <div class="sheet" id="homeSheet" role="dialog" aria-label="Add to Home Screen" hidden>
+    <div class="card stack">
+      <div class="card-head"><h2>Open it like an app</h2><span class="spacer"></span><button class="btn ghost small" id="btnHomeClose" type="button" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+      <ol class="howto">
+        <li>Opened from the camera? Tap the <b>Safari</b> icon at the bottom right to open this page in Safari.</li>
+        <li>Tap <b>Share</b>, then <b>Add to Home Screen</b>.</li>
+        <li>Open <b>Wi-Live</b> from your Home Screen and allow it once more. From then on it opens straight to the picture, full screen.</li>
+      </ol>
+      <p class="note">This phone keeps its own key; nobody else on your network can use it.</p>
     </div>
   </div>
   <div class="hud" id="hud" hidden></div>

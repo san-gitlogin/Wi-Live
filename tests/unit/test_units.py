@@ -21,7 +21,9 @@ def test_page_crypto_matches_rfc_vectors_and_rust():
 @pytest.mark.parametrize("bug", [
     ("'wl-commit'", "'wl-comit'"),
     ("return sha256(cat(op, sha256(cat(ip, msg))));", "return sha256(cat(ip, sha256(cat(op, msg))));"),
-    ("k[0] &= 248;", "k[0] &= 255;"),
+    ("z[0] &= 248;", "z[0] &= 255;"),
+    ("o[0] += c - 1 + 37 * (c - 1);", "o[0] += c - 1 + 38 * (c - 1);"),
+    ("if (a !== 2 && a !== 4) fM(c, c, i);", "if (a !== 2) fM(c, c, i);"),
     ("% 1000000", "% 999999"),
     ("utf8('wilive-device-v1')", "utf8('wilive-device-v2')"),
     ("'wl-hello|' + id + '|' + chal", "'wl-hello|' + chal + '|' + id"),

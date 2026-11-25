@@ -38,6 +38,11 @@ eq('x25519 6.1 alice pub', h(aPub), '8520f0098930a754748b7ddcb43ef75a0dbf3a0d263
 eq('x25519 6.1 bob pub', h(bPub), 'de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f');
 eq('x25519 6.1 shared (a)', h(W.x25519(aPriv, bPub)), '4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742');
 eq('x25519 6.1 shared (b)', h(W.x25519(bPriv, aPub)), '4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742');
+{ // RFC 7748 5.2: k = u = 9, then k, u = x25519(k, u), k
+  let k = new Uint8Array(W.BASE), uu = new Uint8Array(W.BASE);
+  for (let i = 1; i <= 1000; i++) { const r = W.x25519(k, uu); uu = k; k = r; if (i === 1) eq('x25519 iterated once', h(k), '422c8e7a6227d7bca1350b3e2bb7279f7897b87bb6854b783c60e80311ae3079'); }
+  eq('x25519 iterated 1,000 times', h(k), '684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51');
+}
 eq('x25519 low-order point gives zero', h(W.x25519(aPriv, new Uint8Array(32))), '00'.repeat(32));
 // Wi-Live's pairing, byte for byte with wilive-core (vectors/pairing_v1.json)
 const vPub = W.x25519(u(V.v_secret), W.BASE);

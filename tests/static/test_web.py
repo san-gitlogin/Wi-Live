@@ -95,3 +95,48 @@ def test_no_decorative_accent_bars():
     bad += re.findall(r"border-inline(?:-start|-end)?\s*:[^;]*", CSS)
     bad += re.findall(r"box-shadow\s*:\s*inset\s+-?[1-9][^;]*", CSS)
     assert not bad, bad
+
+
+# The floor: Safari 12.1 (iOS 12.2), Chrome 70, Firefox 68 (owner: "supporting legacy
+# browsers"). What crosses it fails here, with what to use instead.
+JS_FLOOR = [
+    (r"\b\d+n\b", "BigInt literal (Safari 14)"), (r"\bBigInt\s*\(", "BigInt (Safari 14)"),
+    (r"\?\.", "optional chaining (Safari 13.1)"), (r"\?\?", "nullish coalescing (Safari 13.1)"),
+    (r"\.replaceAll\(", "replaceAll (Safari 13.1)"), (r"\.at\(", "Array.at (Safari 15.4)"),
+    (r"structuredClone", "structuredClone (Safari 15.4)"), (r"Object\.hasOwn\b", "Object.hasOwn (Safari 15.4)"),
+    (r"Promise\.(allSettled|any)\b", "Promise.allSettled/any (Safari 13/14)"), (r"\bResizeObserver\b", "ResizeObserver (Safari 13.1)"),
+    (r"#[a-zA-Z_]\w*\s*[=;(]", "private class fields (Safari 14.1)"), (r"\?\?=|\|\|=|&&=", "logical assignment (Safari 14)"),
+    (r"\bstatic\s*\{", "static blocks (Safari 16.4)"),
+]
+
+
+@pytest.mark.parametrize("f", ["app.js", "crypto.js"])
+def test_scripts_stay_above_the_legacy_floor(f):
+    src = (WEB / f).read_text()
+    code = re.sub(r"//[^\n]*|/\*.*?\*/|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\"(?:\\.|[^\"\\])*\"", "''", src, flags=re.S)
+    bad = [why for pat, why in JS_FLOOR if re.search(pat, code)]
+    # replaceChildren is allowed: app.js polyfills it first thing.
+    if f == "app.js":
+        assert "Element.prototype.replaceChildren" in src
+    assert not bad, bad
+
+
+def test_css_stays_above_the_legacy_floor():
+    bad = []
+    if re.search(r"(?<![-\w])inset\s*:", CSS):
+        bad.append("inset shorthand (Safari 14.1): top/right/bottom/left")
+    if re.search(r"(?<![-\w])aspect-ratio\s*:", CSS):
+        bad.append("aspect-ratio (Safari 15)")
+    if "no-flex-gap" not in CSS:
+        bad.append("flex gap needs the .no-flex-gap margin fallback (Safari 14.1)")
+    assert not bad, bad
+
+
+def test_every_control_pinned_to_an_edge_keeps_clear_of_the_notch():
+    """Owner's iPhone, turned on its side: the controls stopped answering. In
+    landscape the page reaches under the notch, where taps are not delivered."""
+    rules = dict(re.findall(r"\n(\.(?:bar|hud|menu|mark|wall|overlay))\s*\{([^}]*)\}", CSS))
+    need = {".bar": ["--sal", "--sar", "--sat"], ".hud": ["--sar", "--sab"], ".menu": ["--sar", "--sat"], ".mark": ["--sal", "--sab"],
+            ".wall": ["--sal", "--sar", "--sab", "--sat"], ".overlay": ["--sal", "--sar"]}
+    bad = [f"{sel} misses {v}" for sel, vs in need.items() for v in vs if v not in rules.get(sel, "")]
+    assert not bad, bad

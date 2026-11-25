@@ -93,28 +93,66 @@ const WLC = (() => {
     return out;
   }
 
-  // ---- X25519 (RFC 7748), BigInt Montgomery ladder ----
-  const P = (1n << 255n) - 19n, A24 = 121665n;
-  const mod = a => { const r = a % P; return r < 0n ? r + P : r; };
-  function pow(b, e) { let r = 1n; b = mod(b); while (e > 0n) { if (e & 1n) r = mod(r * b); b = mod(b * b); e >>= 1n; } return r; }
-  function leToBig(b) { let r = 0n; for (let i = b.length - 1; i >= 0; i--) r = (r << 8n) | BigInt(b[i]); return r; }
-  function bigToLe(x) { const out = new Uint8Array(32); for (let i = 0; i < 32; i++) { out[i] = Number(x & 0xffn); x >>= 8n; } return out; }
-  function x25519(scalar, u) {
-    const k = new Uint8Array(scalar); k[0] &= 248; k[31] &= 127; k[31] |= 64;
-    const uu = new Uint8Array(u); uu[31] &= 127;
-    const kn = leToBig(k), x1 = leToBig(uu) % P;
-    let x2 = 1n, z2 = 0n, x3 = x1, z3 = 1n, swap = 0n;
-    for (let t = 254n; t >= 0n; t--) {
-      const kt = (kn >> t) & 1n;
-      if (swap ^ kt) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
-      swap = kt;
-      const a = mod(x2 + z2), aa = mod(a * a), b = mod(x2 - z2), bb = mod(b * b), e = mod(aa - bb);
-      const c = mod(x3 + z3), d = mod(x3 - z3), da = mod(d * a), cb = mod(c * b);
-      x3 = mod((da + cb) * (da + cb)); z3 = mod(x1 * mod((da - cb) * (da - cb)));
-      x2 = mod(aa * bb); z2 = mod(e * mod(aa + A24 * e));
+  // ---- X25519 (RFC 7748), in 16-bit limbs (the TweetNaCl method) ----
+  // No BigInt: phones before iOS 14 and older browsers have none, and pairing
+  // must work there too. Constant-time ladder; checked against RFC 7748 vectors.
+  function gf(init) { const r = new Float64Array(16); if (init) for (let i = 0; i < init.length; i++) r[i] = init[i]; return r; }
+  const K121665 = gf([0xdb41, 1]);
+  function car(o) {
+    let c = 1;
+    for (let i = 0; i < 16; i++) { const v = o[i] + c + 65535; c = Math.floor(v / 65536); o[i] = v - c * 65536; }
+    o[0] += c - 1 + 37 * (c - 1);
+  }
+  function sel(p, q, b) { const c = ~(b - 1); for (let i = 0; i < 16; i++) { const t = c & (p[i] ^ q[i]); p[i] ^= t; q[i] ^= t; } }
+  function pack(o, n) {
+    const m = gf(), t = gf();
+    for (let i = 0; i < 16; i++) t[i] = n[i];
+    car(t); car(t); car(t);
+    for (let j = 0; j < 2; j++) {
+      m[0] = t[0] - 0xffed;
+      for (let i = 1; i < 15; i++) { m[i] = t[i] - 0xffff - ((m[i - 1] >> 16) & 1); m[i - 1] &= 0xffff; }
+      m[15] = t[15] - 0x7fff - ((m[14] >> 16) & 1);
+      const b = (m[15] >> 16) & 1;
+      m[14] &= 0xffff;
+      sel(t, m, 1 - b);
     }
-    if (swap) { [x2, x3] = [x3, x2]; [z2, z3] = [z3, z2]; }
-    return bigToLe(mod(x2 * pow(z2, P - 2n)));
+    for (let i = 0; i < 16; i++) { o[2 * i] = t[i] & 0xff; o[2 * i + 1] = t[i] >> 8; }
+  }
+  function unpack(o, n) { for (let i = 0; i < 16; i++) o[i] = n[2 * i] + (n[2 * i + 1] << 8); o[15] &= 0x7fff; }
+  function fA(o, a, b) { for (let i = 0; i < 16; i++) o[i] = a[i] + b[i]; }
+  function fZ(o, a, b) { for (let i = 0; i < 16; i++) o[i] = a[i] - b[i]; }
+  function fM(o, a, b) {
+    const t = new Float64Array(31);
+    for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) t[i + j] += a[i] * b[j];
+    for (let i = 0; i < 15; i++) t[i] += 38 * t[i + 16];
+    for (let i = 0; i < 16; i++) o[i] = t[i];
+    car(o); car(o);
+  }
+  function inv(o, i) {
+    const c = gf();
+    for (let a = 0; a < 16; a++) c[a] = i[a];
+    for (let a = 253; a >= 0; a--) { fM(c, c, c); if (a !== 2 && a !== 4) fM(c, c, i); }
+    for (let a = 0; a < 16; a++) o[a] = c[a];
+  }
+  function x25519(scalar, u) {
+    const z = new Uint8Array(32), x = gf(), a = gf(), b = gf(), c = gf(), d = gf(), e = gf(), f = gf();
+    for (let i = 0; i < 31; i++) z[i] = scalar[i];
+    z[31] = (scalar[31] & 127) | 64; z[0] &= 248;
+    unpack(x, u);
+    for (let i = 0; i < 16; i++) b[i] = x[i];
+    a[0] = d[0] = 1;
+    for (let i = 254; i >= 0; --i) {
+      const r = (z[i >>> 3] >>> (i & 7)) & 1;
+      sel(a, b, r); sel(c, d, r);
+      fA(e, a, c); fZ(a, a, c); fA(c, b, d); fZ(b, b, d); fM(d, e, e); fM(f, a, a);
+      fM(a, c, a); fM(c, b, e); fA(e, a, c); fZ(a, a, c); fM(b, a, a); fZ(c, d, f);
+      fM(a, c, K121665); fA(a, a, d); fM(c, c, a); fM(a, d, f); fM(d, b, x); fM(b, e, e);
+      sel(a, b, r); sel(c, d, r);
+    }
+    inv(c, c); fM(a, a, c);
+    const out = new Uint8Array(32);
+    pack(out, a);
+    return out;
   }
   const BASE = (() => { const b = new Uint8Array(32); b[0] = 9; return b; })();
 

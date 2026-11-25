@@ -2,6 +2,16 @@
 // no framework. Every string from the network goes in as textContent, never HTML.
 'use strict';
 (() => {
+  // ---- the floor: Safari 12.1 (iOS 12.2), Chrome 70, Firefox 68 (tests/static: legacy floor) ----
+  if (!Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function () { while (this.firstChild) this.removeChild(this.firstChild); this.append.apply(this, arguments); };
+  }
+  // Flex gap arrived in Safari 14.1: without it, the CSS spaces with margins.
+  (() => { const f = document.createElement('div'); f.style.display = 'flex'; f.style.flexDirection = 'column'; f.style.rowGap = '1px';
+    f.appendChild(document.createElement('div')); f.appendChild(document.createElement('div'));
+    document.documentElement.appendChild(f); if (f.scrollHeight !== 1) document.documentElement.classList.add('no-flex-gap'); f.remove(); })();
+  const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const STANDALONE = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
   const $ = id => document.getElementById(id);
   const OWNER = typeof window.WILIVE_OWNER === 'string' ? window.WILIVE_OWNER : '';
   const PROBE = /[?&]probe\b/.test(location.search);
@@ -62,6 +72,7 @@
   function pairErr(t) { $('pairErr').textContent = t; $('pairErr').hidden = !t; }
   function startPairUI() {
     show('vPair'); note('pair');
+    $('iosHint').hidden = !IOS || STANDALONE;
     $('pairAsk').hidden = false; $('pairCode').hidden = true; pairErr('');
     if (!$('devName').value) $('devName').value = guessName();
   }
@@ -234,12 +245,14 @@
           if (video.srcObject !== ms) video.srcObject = ms;
           keepPlaying(video);
         };
-        pc.onconnectionstatechange = () => {
-          const s = pc.connectionState;
-          if (s === 'connected') { live = true; me.live = true; if (primary) { retry = 0; overlay(''); $('liveChip').hidden = false; } clearTimeout(opened); say('live'); }
+        const onState = s => {
+          if (s === 'connected') { live = true; me.live = true; if (primary) { retry = 0; overlay(''); $('liveChip').hidden = false; wake(); } clearTimeout(opened); say('live'); }
           else if (s === 'disconnected') { if (primary) overlay('Connection unsteady...'); }
           else if (s === 'failed') end('network', true);
         };
+        pc.onconnectionstatechange = () => onState(pc.connectionState);
+        // Browsers without connectionState (Firefox before 113) report ICE alone.
+        pc.oniceconnectionstatechange = () => { if (!('connectionState' in pc)) onState({ completed: 'connected', checking: 'connecting' }[pc.iceConnectionState] || pc.iceConnectionState); };
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         ws.send(JSON.stringify({ t: 'offer', sdp: pc.localDescription.sdp }));
@@ -534,8 +547,12 @@
     if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
     if (d.body.classList.contains('immersive')) { d.body.classList.remove('immersive'); fullChanged(); return; }
     const req = root.requestFullscreen || root.webkitRequestFullscreen;
-    if (req) { try { const p = req.call(root, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => immersive()); } catch (e) { immersive(); } }
-    else immersive();   // iPhone: no page full screen; the bar hides and the picture fills the screen
+    if (req) { try { const p = req.call(root, { navigationUI: 'hide' }); if (p && p.catch) p.catch(() => immersive()); } catch (e) { immersive(); } return; }
+    // iPhone: no page full screen. Its own player is real full screen and turns
+    // with the phone; leaving it pauses the video, which keepPlaying undoes.
+    const v = $('video');
+    if (!wallOn && v.webkitEnterFullscreen && v.srcObject) { try { v.webkitEnterFullscreen(); return; } catch (e) {} }
+    immersive();
   }
   function immersive() { document.body.classList.add('immersive'); fullChanged(); }
   function fullChanged() {
@@ -578,11 +595,20 @@
 
   // ----- the bar: fades while watching, back on any touch, move or key -----
   let fadeTimer = 0;
-  function wake() { $('bar').classList.remove('faded'); clearTimeout(fadeTimer); fadeTimer = setTimeout(() => { if (!$('overlay').hidden || !$('moreMenu').hidden || !$('helpSheet').hidden) return; $('bar').classList.add('faded'); }, 3000); }
+  function wake() {
+    $('bar').classList.remove('faded');
+    clearTimeout(fadeTimer);
+    const fade = () => {
+      // Not while something needs reading or a menu is open: look again later.
+      if (!$('overlay').hidden || !$('moreMenu').hidden || !$('helpSheet').hidden || !$('homeSheet').hidden) { fadeTimer = setTimeout(fade, 1000); return; }
+      $('bar').classList.add('faded');
+    };
+    fadeTimer = setTimeout(fade, 3000);
+  }
   function wireWatch() {
     wireVideo($('video'));
     wireZoom();
-    for (const e of ['pointermove', 'pointerdown', 'keydown']) document.addEventListener(e, () => { if (!$('vWatch').hidden) wake(); }, { passive: true });
+    for (const e of ['pointermove', 'pointerdown', 'touchstart', 'keydown']) document.addEventListener(e, () => { if (!$('vWatch').hidden) wake(); }, { passive: true });
     const fits = ['fit', 'fill'], names = { fit: 'Fit', fill: 'Fill' };
     $('btnFit').addEventListener('click', () => { const s = $('stage'); const n = fits[(fits.indexOf(s.dataset.fit) + 1) % fits.length]; s.dataset.fit = n; $('wall').dataset.fit = n; $('fitTx').textContent = names[n]; setZoom(1); if (wallOn) shapeScreens(); });
     $('btnFull').addEventListener('click', toggleFull);
@@ -599,6 +625,9 @@
     $('mStats').addEventListener('click', () => { menu(false); toggleStats(); });
     $('mKeys').addEventListener('click', () => { menu(false); $('helpSheet').hidden = false; });
     $('btnHelpClose').addEventListener('click', () => { $('helpSheet').hidden = true; });
+    $('mHome').hidden = !IOS || STANDALONE;
+    $('mHome').addEventListener('click', () => { menu(false); $('homeSheet').hidden = false; });
+    $('btnHomeClose').addEventListener('click', () => { $('homeSheet').hidden = true; });
     $('btnAgain').addEventListener('click', () => { retry = 0; watch(); });
     $('displaySel').addEventListener('change', e => { T.wantDisplay = Number(e.target.value); main && main.send({ t: 'display', id: T.wantDisplay }); setZoom(1); });
     if (!document.pictureInPictureEnabled && !('webkitSetPresentationMode' in HTMLVideoElement.prototype)) $('mPip').hidden = true;
@@ -617,7 +646,7 @@
       else if (k === '-') setZoom(zoom.s / 1.25);
       else if (k === '0') setZoom(1);
       else if (k === '?') $('helpSheet').hidden = !$('helpSheet').hidden;
-      else if (k === 'escape') { menu(false); $('helpSheet').hidden = true; if (document.body.classList.contains('immersive')) toggleFull(); }
+      else if (k === 'escape') { menu(false); $('helpSheet').hidden = true; $('homeSheet').hidden = true; if (document.body.classList.contains('immersive')) toggleFull(); }
       else if (/^[1-9]$/.test(k) && !wallOn && displayList[Number(k) - 1]) { $('displaySel').value = String(displayList[Number(k) - 1].id); $('displaySel').dispatchEvent(new Event('change')); }
       else return;
       e.preventDefault();
