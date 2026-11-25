@@ -33,3 +33,15 @@ cp /tmp/wilive-app.svg app-icon.svg
 rsvg-convert -w 1024 -h 1024 app-icon.svg -o $A/app-1024.png
 rsvg-convert -w 256 -h 256 app-icon.svg -o $A/app-256.png
 echo "icons written to $A"
+# The Windows .exe icon (crates/wilive/build.rs embeds it): every size Windows asks
+# for, each stored as a PNG of exactly that size.
+for z in 16 20 24 32 40 48 64 96 128 256; do rsvg-convert -w $z -h $z app-icon.svg -o /tmp/wilive_ico_$z.png; done
+python3 - "$A/app.ico" <<'PY'
+import struct, sys
+sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
+imgs = [open(f"/tmp/wilive_ico_{z}.png", "rb").read() for z in sizes]
+out = struct.pack("<HHH", 0, 1, len(sizes)); off = 6 + 16 * len(sizes)
+for z, d in zip(sizes, imgs):
+    out += struct.pack("<BBBBHHII", z % 256, z % 256, 0, 0, 1, 32, len(d), off); off += len(d)
+open(sys.argv[1], "wb").write(out + b"".join(imgs))
+PY
