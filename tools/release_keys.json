@@ -1,0 +1,13 @@
+{
+  "_about": "Wi-Live's public release keys. Private halves live in ~/.wilive-release (never in the repo). docs/RELEASING.md.",
+  "release": {
+    "alg": "ECDSA P-256 SHA-256",
+    "public_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEltLaNo50IgMc0B8OcLR5fkFoAM4P\ngtRBzi2xbqHmI+k+s0Miq8FrUTE+n82xiz10zlXt8aTwt097MNHDWdIonA==\n-----END PUBLIC KEY-----\n",
+    "signs": "SHA256SUMS -> SHA256SUMS.sig (DER)"
+  },
+  "macos_signing": {
+    "subject": "Wi-Live Release (macOS)",
+    "sha1": "7EC828EA86B744681E2C1456C700112E77A9086C",
+    "valid_until": "2036-11"
+  }
+}
