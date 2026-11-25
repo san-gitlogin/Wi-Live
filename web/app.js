@@ -131,7 +131,14 @@
   // A view is one display in one <video>, over its own signaling session. One view
   // fills the stage; "All displays" makes a wall of them, one per display, arranged
   // as the viewer likes (layout and order kept per device).
-  const WALL_KEY = 'wilive.wall.v1';
+  const WALL_KEY = 'wilive.wall.v1', QUALITY_KEY = 'wilive.quality.v1';
+  const QUALITIES = ['auto', 'sharp', 'smooth', 'saver'];
+  function quality() { try { const q = localStorage.getItem(QUALITY_KEY); return QUALITIES.includes(q) ? q : 'auto'; } catch (e) { return 'auto'; } }
+  function setQuality(q) {
+    try { localStorage.setItem(QUALITY_KEY, q); } catch (e) {}
+    for (const b of document.querySelectorAll('#qualitySeg button')) b.setAttribute('aria-checked', String(b.dataset.q === q));
+    for (const v of views()) v.send({ t: 'quality', q });
+  }
   let main = null, wall = [], retry = 0, retryTimer = 0, displayList = [], wallOn = false;
   const views = () => (wallOn ? wall : main ? [main] : []);
   function overlay(t, again) { $('overlayMsg').textContent = t || ''; $('overlay').hidden = !t; $('btnAgain').hidden = !again; }
@@ -260,7 +267,9 @@
       }
       if (m.t === 'answer') {
         if (!fp || fpOf(m.sdp) !== fp) return end('fingerprint', false);
-        try { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); } catch (e) { end('answer', true); }
+        try { await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }); } catch (e) { return end('answer', true); }
+        // The size this device chose stays chosen, every session.
+        if (quality() !== 'auto') ws.send(JSON.stringify({ t: 'quality', q: quality() }));
       }
     };
     const send = o2 => { try { ws && ws.readyState === 1 && ws.send(JSON.stringify(o2)); } catch (e) {} };
@@ -627,6 +636,8 @@
     $('btnMore').addEventListener('click', e => { e.stopPropagation(); menu(); });
     document.addEventListener('click', e => { if (!$('moreMenu').hidden && !$('moreMenu').contains(e.target)) menu(false); });
     $('mFit').addEventListener('click', () => { menu(false); $('btnFit').click(); });
+    for (const b of document.querySelectorAll('#qualitySeg button')) b.addEventListener('click', e => { e.stopPropagation(); setQuality(b.dataset.q); });
+    setQuality(quality());
     $('mPip').addEventListener('click', () => { menu(false); pip(); });
     $('mShot').addEventListener('click', () => { menu(false); snapshot(); });
     $('mStats').addEventListener('click', () => { menu(false); toggleStats(); });

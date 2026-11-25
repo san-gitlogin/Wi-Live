@@ -152,3 +152,23 @@ def test_safari_engine_watches_and_plays_on_after_a_pause(pw, server):
         assert v.evaluate("document.getElementById('video').paused") is False
     finally:
         wk.close()
+
+
+def test_the_picture_choice_changes_what_arrives_and_is_remembered(chrome, server):
+    o, v = owner_page(chrome, server), viewer_page(chrome, server)
+    pair(o, v)
+    size = lambda: v.evaluate("(() => { const x = document.getElementById('video'); return [x.videoWidth, x.videoHeight]; })()")
+    def choose(q, want):
+        v.click("#btnMore")
+        v.click(f"#qualitySeg [data-q={q}]")
+        v.keyboard.press("Escape")
+        v.wait_for_function("(w) => document.getElementById('video').videoWidth === w", arg=want, timeout=15000)
+        assert v.get_attribute(f"#qualitySeg [data-q={q}]", "aria-checked") == "true"
+    choose("smooth", 640)
+    choose("saver", 320)
+    choose("sharp", 1280)
+    choose("saver", 320)
+    v.reload()
+    wait(v, "window.__wl.state === 'live'")
+    v.wait_for_function("() => document.getElementById('video').videoWidth === 320", timeout=15000)
+    assert v.get_attribute("#qualitySeg [data-q=saver]", "aria-checked") == "true", "kept on this device"

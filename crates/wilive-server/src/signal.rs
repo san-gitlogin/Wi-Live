@@ -11,7 +11,8 @@
 //!   app    -> {"t":"answer","sdp"}
 //!   app    -> {"t":"stats","fps"}                       every second while live
 //!   app    -> {"t":"displays",...} {"t":"display","id","fallback"} {"t":"audio",...}
-//!   viewer -> {"t":"key"} {"t":"display","id"} {"t":"lat","p50","p99"} {"t":"size","w","h"} {"t":"bye"}
+//!   viewer -> {"t":"key"} {"t":"display","id"} {"t":"lat","p50","p99"} {"t":"size","w","h"}
+//!             {"t":"quality","q"} (auto | sharp | smooth | saver) {"t":"bye"}
 //!   app    -> {"t":"end","reason"}  reason: ended | paused | forgotten | capture | permission | ...
 //!
 //! Before the proof is accepted only a JSON parse and one HMAC happen.
@@ -89,11 +90,28 @@ impl Strikes {
 #[derive(Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 enum FromViewer {
-    Hello { id: String, mac: String },
-    Offer { sdp: String },
-    Display { id: u32 },
-    Lat { p50: u32, p99: u32 },
-    Size { w: u32, h: u32 },
+    Hello {
+        id: String,
+        mac: String,
+    },
+    Offer {
+        sdp: String,
+    },
+    Display {
+        id: u32,
+    },
+    Lat {
+        p50: u32,
+        p99: u32,
+    },
+    Size {
+        w: u32,
+        h: u32,
+    },
+    /// "auto" | "sharp" | "smooth" | "saver": this viewer's choice of size.
+    Quality {
+        q: String,
+    },
     Key,
     Bye,
 }
@@ -401,6 +419,11 @@ pub fn serve(
             Ok(Got::Msg(Some(FromViewer::Lat { p50, p99 }))) => {
                 live.lat_p50.store(p50.min(60_000), Ordering::Relaxed);
                 live.lat_p99.store(p99.min(60_000), Ordering::Relaxed);
+            }
+            Ok(Got::Msg(Some(FromViewer::Quality { q }))) => {
+                if let Some(q) = wilive_stream::pipeline::Quality::from_word(&q) {
+                    control.set_quality(q);
+                }
             }
             Ok(Got::Msg(Some(FromViewer::Size { w, h }))) => {
                 live.width.store(w.min(16_384), Ordering::Relaxed);

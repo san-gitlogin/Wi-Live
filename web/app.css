@@ -204,3 +204,9 @@ button, select, a, .tile { touch-action: manipulation; -webkit-tap-highlight-col
 .scroll { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .foot { margin: 16px 0 0; text-align: center; font-size: 12px; color: var(--text-2); }
 #oLogCount { font-size: 13px; }
+.mgroup { padding: 6px 4px 8px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 4px; }
+.mlabel { font-size: 12px; color: #B5A8A5; padding: 0 6px 6px; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.seg button { min-height: 34px; border: 0; border-radius: 8px; background: rgba(255,255,255,.06); color: #F6F1EF; font: 500 13px/1 var(--font); cursor: pointer; }
+.seg button[aria-checked="true"] { background: #F6F1EF; color: #1A1414; }
+.seg button:focus-visible { outline: 2px solid #F6F1EF; outline-offset: 1px; }

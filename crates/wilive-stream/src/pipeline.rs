@@ -125,6 +125,8 @@ struct Shared1 {
     /// What full size costs for what its display shows now, bit/s; 0 = not known
     /// yet. Set by the encoding loop (see `full_cost`).
     full_need: AtomicU32,
+    /// The viewer's own choice of size (`Quality` as u8): limits the choice above.
+    quality: AtomicU8,
 }
 
 struct Viewer {
@@ -201,6 +203,25 @@ impl Control {
         self.offer_bitrate(bps);
         self.s.urgent.store(false, Ordering::Relaxed);
     }
+    /// The viewer's choice of size. Applied at once (from the next keyframe of the
+    /// new size), and held to on every later estimate.
+    pub fn set_quality(&self, q: Quality) {
+        self.s.quality.store(q as u8, Ordering::Relaxed);
+        let now = self.tier();
+        let next = q.limit(now);
+        if next != now {
+            self.s.tier.store(next as u8, Ordering::Relaxed);
+            self.restart();
+        }
+        let bps = self.s.est.load(Ordering::Relaxed);
+        if bps > 0 {
+            self.offer_bitrate(bps);
+        }
+    }
+    pub fn quality(&self) -> Quality {
+        Quality::from_u8(self.s.quality.load(Ordering::Relaxed))
+    }
+
     /// This viewer's congestion-control estimate, in bits per second. It also
     /// decides the viewer's quality.
     pub fn offer_bitrate(&self, bps: u32) {
@@ -238,6 +259,7 @@ impl Control {
                 now
             }
         };
+        let want = self.quality().limit(want);
         // Only once the estimate has stayed across for TIER_HOLD: a noisy
         // estimate (seen swinging 0.25 - 13 Mbit/s on one WiFi) would otherwise
         // switch quality, and send a keyframe, every few seconds.
@@ -265,6 +287,49 @@ impl Control {
             // The other stream's frames only make sense from its keyframe.
             self.s.tier.store(next as u8, Ordering::Relaxed);
             self.restart();
+        }
+    }
+}
+
+/// What a viewer asked for (the dashboard's Picture menu). Auto follows the link;
+/// the others fix or cap the size, for this viewer only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Quality {
+    Auto = 0,
+    /// Full size always: sharp text, whatever the link (it may stutter on a thin one).
+    Sharp = 1,
+    /// At most half size: fluid motion on weaker WiFi.
+    Smooth = 2,
+    /// Quarter size: the least data.
+    Saver = 3,
+}
+
+impl Quality {
+    pub fn from_word(w: &str) -> Option<Quality> {
+        Some(match w {
+            "auto" => Quality::Auto,
+            "sharp" => Quality::Sharp,
+            "smooth" => Quality::Smooth,
+            "saver" => Quality::Saver,
+            _ => return None,
+        })
+    }
+    fn from_u8(v: u8) -> Quality {
+        match v {
+            1 => Quality::Sharp,
+            2 => Quality::Smooth,
+            3 => Quality::Saver,
+            _ => Quality::Auto,
+        }
+    }
+    /// The size this viewer gets, given what the link would choose.
+    pub fn limit(self, by_link: usize) -> usize {
+        match self {
+            Quality::Auto => by_link,
+            Quality::Sharp => FULL,
+            Quality::Smooth => by_link.max(HALF),
+            Quality::Saver => QUARTER,
         }
     }
 }
@@ -434,6 +499,7 @@ impl Pipeline {
             switched: AtomicBool::new(false),
             urgent: AtomicBool::new(false),
             full_need: AtomicU32::new(0),
+            quality: AtomicU8::new(Quality::Auto as u8),
         });
         s.viewers.push(Viewer { id, tx, s: v });
         cv.notify_all();
@@ -1022,6 +1088,28 @@ fn move_off(shared: &Arc<(Mutex<Shared>, Condvar)>, d: u32, why: &str) {
         v.s.display.store(MAIN, Ordering::Relaxed);
         v.s.need_key.store(true, Ordering::Relaxed);
         v.s.join.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod quality_tests {
+    use super::*;
+
+    #[test]
+    fn a_viewer_choice_fixes_or_caps_the_size_the_link_would_choose() {
+        for by_link in [FULL, HALF, QUARTER] {
+            assert_eq!(Quality::Auto.limit(by_link), by_link);
+            assert_eq!(Quality::Sharp.limit(by_link), FULL);
+            assert_eq!(Quality::Saver.limit(by_link), QUARTER);
+        }
+        assert_eq!(Quality::Smooth.limit(FULL), HALF, "never full size");
+        assert_eq!(
+            Quality::Smooth.limit(QUARTER),
+            QUARTER,
+            "a thin link still goes smaller"
+        );
+        assert_eq!(Quality::from_word("sharp"), Some(Quality::Sharp));
+        assert_eq!(Quality::from_word("loud"), None);
     }
 }
 

@@ -83,6 +83,15 @@
     <button class="btn" id="btnMore" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More" title="More"><svg><use href="#i-more"/></svg></button>
   </div>
   <div class="menu" id="moreMenu" role="menu" hidden>
+    <div class="mgroup" role="group" aria-label="Picture">
+      <div class="mlabel">Picture</div>
+      <div class="seg" id="qualitySeg">
+        <button type="button" role="menuitemradio" data-q="auto" aria-checked="true" title="Follows the network">Auto</button>
+        <button type="button" role="menuitemradio" data-q="sharp" aria-checked="false" title="Full size always: sharp text">Sharp</button>
+        <button type="button" role="menuitemradio" data-q="smooth" aria-checked="false" title="At most half size: fluid on weaker WiFi">Smooth</button>
+        <button type="button" role="menuitemradio" data-q="saver" aria-checked="false" title="Quarter size: the least data">Saver</button>
+      </div>
+    </div>
     <button class="mi narrow-only" id="mFit" role="menuitem" type="button"><svg><use href="#i-fit"/></svg>Fit or fill the screen</button>
     <button class="mi" id="mPip" role="menuitem" type="button"><svg><use href="#i-pip"/></svg>Picture in picture<kbd>P</kbd></button>
     <button class="mi" id="mShot" role="menuitem" type="button"><svg><use href="#i-camera"/></svg>Save a snapshot<kbd>C</kbd></button>
