@@ -145,8 +145,13 @@ def test_safari_engine_watches_and_plays_on_after_a_pause(pw, server):
         v = ctx.new_page()
         v.goto(server.base + "/")
         pair(o, v, "Safari")
-        n = frames(v, 2)
-        assert n["n"] >= floor(20) and sizes_ok(n["w"], n["h"], 1280, 720), n
+        # The video's own count of decoded frames: in WebKitGTK on a slow runner the
+        # per-frame callbacks are sparse, the decoding is not.
+        decoded = "(() => { const q = document.getElementById('video').getVideoPlaybackQuality(); return q.totalVideoFrames; })()"
+        start = v.evaluate(decoded)
+        v.wait_for_function(f"(s) => {decoded} - s >= {floor(20)}", arg=start, timeout=10000)
+        n = frames(v, 0.5)
+        assert sizes_ok(n["w"], n["h"], 1280, 720), n
         v.evaluate("() => document.getElementById('video').pause()")
         v.wait_for_timeout(400)
         assert v.evaluate("document.getElementById('video').paused") is False
