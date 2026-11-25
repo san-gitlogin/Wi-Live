@@ -1,27 +1,42 @@
-# Wi-Live CI: format, lint and test on every platform, then build the app.
-# Not yet run: the repository has not been pushed (docs/PROGRESS.md).
+# Wi-Live on the three operating systems it ships for, on real machines: format,
+# clippy, every Rust test, the page's crypto, and the whole browser suite (pairing,
+# watching, security, tampering, phones, screens, endurance, latency) against that
+# OS's own H.264 encoder in real Google Chrome; then the app as an artifact.
+#
+# Manual only (Actions > ci > Run workflow), as in HID-Fi: no push starts one.
 name: ci
+
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-24.04]
+        os: [macos-15, windows-2022, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Linux - OpenH264 from Cisco (the encoder Wi-Live uses there)
+        if: runner.os == 'Linux'
+        run: |
+          lib=$(package/fetch-openh264.sh "$HOME/.local/share/wilive")
+          echo "WILIVE_OPENH264=$lib" >> "$GITHUB_ENV"
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -30,12 +45,47 @@ jobs:
         run: cargo test --workspace
       - name: Page crypto (RFC vectors and the Rust bytes)
         run: node tests/unit/crypto_check.js
-      - name: Build the app
-        run: cargo build --release -p wilive
+      - name: Build the app and the test server
+        run: cargo build --release -p wilive -p wilive-server --bins --examples
+      - name: Python test tools
+        run: |
+          python -m pip install pytest playwright cryptography opencv-python-headless numpy
+          python -m playwright install --with-deps webkit
+      - name: Static and unit tiers
+        run: python tests/run.py
+      - name: Browser tiers (real Google Chrome, and WebKit)
+        run: python tests/run.py --tier e2e
+      - name: Latency (reported; hosted runners are shared VMs without a GPU)
+        continue-on-error: true
+        run: python tests/run.py --tier latency -s
+      - name: The Windows app needs no Visual C++ runtime (a clean Windows has none)
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import pathlib, re, sys
+          bad = []
+          for exe in ["target/release/wilive.exe", "target/release/examples/serve.exe"]:
+              data = pathlib.Path(exe).read_bytes()
+              found = sorted({m.decode().lower() for m in re.findall(rb"(?i)(?:vcruntime140[_0-9]*|msvcp140[_0-9]*|api-ms-win-crt-[a-z]+-l1-1-0)\.dll", data)})
+              print(exe, found or "no C runtime DLLs")
+              bad += found
+          sys.exit(1 if bad else 0)
+      - name: Name the build as the installers expect it
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ runner.os }}" in
+            Linux)   cp target/release/wilive "dist/wilive-linux-$(uname -m)" ;;
+            Windows) cp target/release/wilive.exe dist/wilive-windows-x86_64.exe ;;
+            macOS)   package/macos.sh && cp target/package/*.dmg dist/ ;;
+          esac
+          (cd dist && (sha256sum * 2>/dev/null || shasum -a 256 *) > SHA256SUMS-${{ runner.os }})
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: wilive-${{ matrix.os }}
           path: |
-            target/release/wilive
-            target/release/wilive.exe
+            dist/
+            tests/.out/
           if-no-files-found: ignore

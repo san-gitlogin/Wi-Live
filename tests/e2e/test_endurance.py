@@ -4,6 +4,7 @@ without bound, nothing may stay broken, and nobody may have to pair again."""
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -12,9 +13,12 @@ import pytest
 from support.pages import OPEN, frames, owner_page, pair, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
+posix = pytest.mark.skipif(sys.platform == "win32", reason="needs ps and SIGSTOP (POSIX); Windows runs the rest")
 
 
 def threads(pid):
+    if sys.platform.startswith("linux"):
+        return int(subprocess.run(["ps", "-o", "nlwp=", "-p", str(pid)], capture_output=True, text=True).stdout.strip() or 0)
     out = subprocess.run(["ps", "-M", "-p", str(pid)], capture_output=True, text=True).stdout
     return max(0, len(out.strip().splitlines()) - 1)
 
@@ -44,6 +48,7 @@ def test_a_full_log_and_device_list_scroll_and_stay_fast(chrome, make_server):
     assert h["rss_mb"] and h["rss_mb"] < 200, h
 
 
+@posix
 def test_viewers_coming_and_going_leak_nothing(chrome, server):
     """Measured 2026-11-26: 36 MB at start, ~54 MB once caches warm (first 10 viewers),
     then +0.1 MB per viewer at most. A leak shows as a slope after the warm-up."""
@@ -92,6 +97,7 @@ def test_a_restarted_computer_is_found_again_without_pairing(chrome, make_server
     assert "code" not in after and "pair" not in after, f"never asked to pair again: {after}"
 
 
+@posix
 def test_a_network_stall_recovers_by_itself(chrome, server):
     o = owner_page(chrome, server)
     v = viewer_page(chrome, server)
