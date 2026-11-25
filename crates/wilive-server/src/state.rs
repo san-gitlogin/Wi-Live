@@ -100,6 +100,7 @@ pub struct State {
     pub live: Mutex<Vec<Arc<Live>>>,
     persist: Box<dyn Persist>,
     pub host: Box<dyn Host>,
+    pub health: crate::health::Health,
     started: Instant,
     seq: AtomicU64,
 }
@@ -122,6 +123,7 @@ impl State {
             live: Mutex::default(),
             persist,
             host: Box::new(NoHost),
+            health: Default::default(),
             started: Instant::now(),
             seq: AtomicU64::new(1),
         }

@@ -257,6 +257,9 @@ pub fn owner_state(st: &State, urls: &[String]) -> serde_json::Value {
         "devices": lock(&st.devices).views(),
         "log": lock(&st.log).recent(100),
         "capture_allowed": st.host.capture_allowed(),
+        "app": st.health.now(),
+        "log_total": lock(&st.log).len(),
+        "log_cap": wilive_core::log::CAP,
         "switches": st.host.switches().into_iter().map(|(k, v)| (k.to_string(), serde_json::Value::Bool(v))).collect::<serde_json::Map<_, _>>(),
     })
 }

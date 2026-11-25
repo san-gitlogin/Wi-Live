@@ -673,8 +673,17 @@
     return el('button', { class: 'btn small', type: 'button', 'data-act': id, text: armed === id ? sure : label, onclick: () => { if (armed === id) { armed = ''; fn(); } else { armed = id; redraw(); setTimeout(() => { if (armed === id) { armed = ''; redraw(); } }, 4000); } } });
   }
   const LOG_WORDS = { pair_asked: 'asked to watch', pair_allowed: 'was allowed', pair_denied: 'was refused', watching: 'started watching', ended: 'stopped watching', refused: 'was refused', forgotten: 'was removed', paused: 'Sharing paused', resumed: 'Sharing resumed' };
+  const drawn = {};
+  // A section is rebuilt only when its data changed: a window open all day costs
+  // nothing between events, and a scrolled list keeps its place.
+  function changed(key, data) { const j = JSON.stringify(data); if (drawn[key] === j) return false; drawn[key] = j; return true; }
   function render(s) {
     T.owner = s;
+    if (s.app) {
+      const a = s.app, up = a.uptime_s, h = Math.floor(up / 3600), m = Math.floor(up % 3600 / 60);
+      $('oHealth').textContent = 'Wi-Live ' + s.version + ' \u00b7 ' + (a.rss_mb != null ? a.rss_mb + ' MB' : '') + (a.cpu_pct != null ? ' \u00b7 ' + a.cpu_pct + '% CPU' : '') + ' \u00b7 up ' + (h ? h + 'h ' : '') + m + 'm';
+    }
+    $('oLogCount').textContent = s.log_total ? s.log_total + ' kept, newest first (up to ' + s.log_cap + ')' : '';
     setName(s.name);
     const n = s.live.length;
     $('oLive').className = 'chip' + (n ? ' live' : '');
@@ -685,7 +694,7 @@
     $('oPausedMsg').hidden = !s.paused;
     // requests
     $('oAsks').hidden = !s.pending.length;
-    $('oAskList').replaceChildren(...s.pending.map(p => el('div', { class: 'ask', 'data-req': p.req },
+    if (changed('asks', s.pending)) $('oAskList').replaceChildren(...s.pending.map(p => el('div', { class: 'ask', 'data-req': p.req },
       el('div', { class: 'row' }, el('div', { class: 'grow' }, el('div', { class: 'title', text: p.name }), el('div', { class: 'sub', text: p.agent + ' at ' + p.addr }))),
       el('p', { class: 'note', text: 'Allow only if this device shows the same code:' }),
       el('div', { class: 'code', text: p.code }),
@@ -695,7 +704,7 @@
     // watching: one row per device (a device watching every display holds a session for each)
     const byDev = [];
     for (const l of s.live) { let g = byDev.find(x => x.device === l.device); if (!g) { g = { device: l.device, list: [] }; byDev.push(g); } g.list.push(l); }
-    $('oLiveList').replaceChildren(...(byDev.length ? byDev.map(g => { const l = g.list[0], n = g.list.length;
+    if (changed('live', [s.live, Math.floor(Date.now() / 1000)])) $('oLiveList').replaceChildren(...(byDev.length ? byDev.map(g => { const l = g.list[0], n = g.list.length;
       return el('li', { class: 'item', 'data-live': l.id },
       el('div', { class: 'grow' },
         el('div', { class: 'title', text: l.name }),
@@ -711,21 +720,21 @@
     const sw = Object.entries(s.switches || {});
     $('oThis').hidden = !sw.length;
     const SW = { sound: ['Share this computer\'s sound', 'Viewers hear what this computer plays.'], mic: ['Share the microphone', 'Viewers hear this computer\'s microphone.'], start_at_login: ['Start at login', 'Wi-Live is ready whenever this computer is.'] };
-    $('oSwitches').replaceChildren(...sw.filter(([k]) => SW[k]).map(([k, on]) => el('li', { class: 'item' },
+    if (changed('sw', sw)) $('oSwitches').replaceChildren(...sw.filter(([k]) => SW[k]).map(([k, on]) => el('li', { class: 'item' },
       el('div', { class: 'grow' }, el('div', { class: 'title', text: SW[k][0] }), el('div', { class: 'sub', text: SW[k][1] })),
       el('button', { class: 'switch', role: 'switch', type: 'button', 'data-switch': k, 'aria-checked': String(!!on), 'aria-label': SW[k][0], onclick: () => act('/api/owner/switch', { name: k, on: !on }) }))));
     // where to open
-    $('oUrls').replaceChildren(...(s.urls.length ? s.urls.map((u, i) => el('div', { class: 'where' },
+    if (changed('urls', s.urls)) $('oUrls').replaceChildren(...(s.urls.length ? s.urls.map((u, i) => el('div', { class: 'where' },
         s.qr && s.qr[i] ? el('img', { class: 'qr', src: s.qr[i], alt: 'QR code for ' + u, width: '148', height: '148' }) : null,
         el('div', {}, el('a', { class: 'url', href: u, text: u, target: '_blank', rel: 'noopener' }), el('p', { class: 'note', text: 'Or point a phone\'s camera at the code.' }))))
       : [el('div', { class: 'msg', text: 'This computer is not on a home network right now.' })]));
     // devices
-    $('oDevList').replaceChildren(...(s.devices.length ? s.devices.map(d => el('li', { class: 'item', 'data-dev': d.id },
+    if (changed('dev', [s.devices, armed, Math.floor(Date.now() / 60000)])) $('oDevList').replaceChildren(...(s.devices.length ? s.devices.map(d => el('li', { class: 'item', 'data-dev': d.id },
       el('div', { class: 'grow' }, el('div', { class: 'title', text: d.name }), el('div', { class: 'sub', text: d.agent + ', last seen ' + ago(d.last_seen) + (d.last_addr ? ' at ' + d.last_addr : '') })),
       twoStep('forget:' + d.id, 'Remove', 'Remove?', () => act('/api/owner/forget', { id: d.id }))))
       : [el('li', { class: 'empty', text: 'No devices yet. Open the address above on a phone to add one.' })]));
     // log
-    $('oLog').replaceChildren(...(s.log.length ? s.log.slice(0, 40).map(e => el('li', { class: 'item' },
+    if (changed('log', s.log)) $('oLog').replaceChildren(...(s.log.length ? s.log.map(e => el('li', { class: 'item' },
       el('time', { text: clock(e.at) }),
       el('div', { class: 'grow' }, el('div', { class: 'sub', text: [e.who, LOG_WORDS[e.kind] || e.kind, e.addr ? 'from ' + e.addr : '', e.detail].filter(Boolean).join(' ') }))))
       : [el('li', { class: 'empty', text: 'Nothing yet.' })]));

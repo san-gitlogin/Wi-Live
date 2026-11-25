@@ -9,11 +9,24 @@
 //! WILIVE_REAL_SCREEN=1 this computer's real screen instead of the pattern
 //! WILIVE_SOUND=test|real  a test tone (clicks each second) or the real sound
 //! WILIVE_PORT=p       exactly this port
+//! WILIVE_HOME=dir     keep devices and the log in dir across restarts (as the app does)
+//! WILIVE_FILL_LOG=n   start with n made-up log events; WILIVE_FILL_DEVICES=n with n devices
 //! stdin: "still" / "move" (freeze the pattern), "unplug <id>" (take a display away)
 
 use std::sync::Arc;
 use wilive_server::signal::Media;
 use wilive_server::state::{Host, NoPersist, State};
+
+/// Devices and the log as files in WILIVE_HOME (the app's own store does the same).
+struct DirPersist(std::path::PathBuf);
+impl wilive_server::state::Persist for DirPersist {
+    fn save_devices(&self, json: &str) {
+        let _ = std::fs::write(self.0.join("devices.json"), json);
+    }
+    fn save_log(&self, json: &str) {
+        let _ = std::fs::write(self.0.join("access.json"), json);
+    }
+}
 
 /// WILIVE_TEST_HOST=1: switches and a screen-recording permission that starts
 /// refused and is granted when asked, so the owner window's controls can be tested.
@@ -116,13 +129,51 @@ fn main() {
     });
     let token = wilive_core::pair::random_hex(24);
     let name = std::env::var("WILIVE_NAME").unwrap_or_else(|_| "Test computer".into());
-    let mut state = State::new(
-        &name,
-        token.clone(),
-        Default::default(),
-        Default::default(),
-        Box::new(NoPersist),
-    );
+    let home = std::env::var_os("WILIVE_HOME").map(std::path::PathBuf::from);
+    let mut devices = home
+        .as_ref()
+        .and_then(|h| std::fs::read_to_string(h.join("devices.json")).ok())
+        .and_then(|j| wilive_core::devices::Devices::from_json(&j).ok())
+        .unwrap_or_default();
+    let mut log = home
+        .as_ref()
+        .and_then(|h| std::fs::read_to_string(h.join("access.json")).ok())
+        .map(|j| wilive_core::log::AccessLog::from_json(&j))
+        .unwrap_or_default();
+    let fill = |k: &str| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0)
+    };
+    for i in 0..fill("WILIVE_FILL_LOG") {
+        log.push(wilive_core::log::Event {
+            at: 1_795_000_000 + i as u64,
+            kind: wilive_core::log::Kind::Watching,
+            who: format!("Device {i}"),
+            addr: "192.168.0.50".into(),
+            detail: String::new(),
+        });
+    }
+    for i in 0..fill("WILIVE_FILL_DEVICES") {
+        let k = wilive_core::pair::DeviceKey::from_bytes([i as u8; 32]);
+        devices.add(wilive_core::devices::Device::new(
+            format!("{i:032x}"),
+            format!("Phone {i}"),
+            "Safari on iPhone".into(),
+            "192.168.0.60".into(),
+            &k,
+            1_795_000_000,
+        ));
+    }
+    let persist: Box<dyn wilive_server::state::Persist> = match &home {
+        Some(h) => {
+            let _ = std::fs::create_dir_all(h);
+            Box::new(DirPersist(h.clone()))
+        }
+        None => Box::new(NoPersist),
+    };
+    let mut state = State::new(&name, token.clone(), devices, log, persist);
     if std::env::var_os("WILIVE_TEST_HOST").is_some() {
         let h = TestHost::default();
         *h.sw.lock().unwrap() = vec![("sound", true), ("mic", false), ("start_at_login", true)];

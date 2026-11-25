@@ -9,6 +9,7 @@
 //! owner's window is there). Its page still loads and says why.
 
 pub mod api;
+pub mod health;
 pub mod http;
 pub mod qr;
 pub mod signal;
@@ -24,7 +25,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub const MAX_CONNS: usize = 64;
+/// Page loads leave idle keep-alive sockets for a few seconds; 64 refused a
+/// browser's 16th quick reload (tests/e2e/test_endurance.py).
+pub const MAX_CONNS: usize = 128;
 /// One device: a page, its reloads' lingering keep-alive sockets and a viewer's
 /// signaling socket. Seen in tests: 12 refused a browser's own page loads.
 pub const MAX_PER_ADDR: usize = 24;
@@ -204,8 +207,10 @@ pub fn start(port: Option<u16>, state: Arc<State>, media: Media) -> std::io::Res
                     continue; // dropped: closes the connection
                 }
                 let c = ctx.clone();
+                // Small stacks: a connection thread parses a request and answers it.
                 let spawned = std::thread::Builder::new()
                     .name("wilive-conn".into())
+                    .stack_size(512 * 1024)
                     .spawn(move || {
                         connection(&c, stream, peer);
                         c.release(peer.ip());
