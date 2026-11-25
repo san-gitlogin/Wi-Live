@@ -30,3 +30,23 @@ def test_no_secret_is_ever_logged():
                     continue
                 bad.append(f"{f.relative_to(ROOT)}:{i}: {line.strip()}")
     assert not bad, "\n".join(bad)
+
+
+def _installed(target):
+    r = subprocess.run(["rustup", "target", "list", "--installed"], capture_output=True, text=True)
+    return target in r.stdout
+
+
+@pytest.mark.parametrize("target", ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"])
+def test_clippy_is_clean_for_the_other_platforms(target):
+    """Windows and Linux code compiles only there; checked from here so a Mac-only
+    change cannot break them unseen (Linux uses Zig as its C compiler, tools/)."""
+    if not _installed(target):
+        pytest.skip(f"rustup target {target} not installed")
+    import os
+    env = dict(os.environ)
+    if "linux" in target:
+        env["CC_x86_64_unknown_linux_gnu"] = str(ROOT / "tools/zigcc-linux.sh")
+        env["AR_x86_64_unknown_linux_gnu"] = str(ROOT / "tools/zigar.sh")
+    r = subprocess.run(["cargo", "clippy", "--workspace", "--all-targets", "--target", target, "-q", "--", "-D", "warnings"], cwd=ROOT, capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr[-4000:]

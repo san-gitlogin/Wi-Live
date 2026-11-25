@@ -7,8 +7,11 @@
 mod autostart;
 #[cfg(any(target_os = "macos", windows))]
 mod desktop;
+// The tray's pieces; Linux has no tray yet (docs/PROGRESS.md "Next").
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 mod icons;
 mod logfile;
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 mod model;
 mod store;
 
