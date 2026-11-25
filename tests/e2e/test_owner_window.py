@@ -43,8 +43,8 @@ def test_the_window_counts_viewers_live_and_the_log_reads_as_sentences(chrome, s
     o.wait_for_selector("#oLiveList [data-live] .stat")
     stats = o.text_content("#oLiveList")
     assert "Kitchen iPad" in stats and "fps" in stats and "sound" in stats
-    first = o.text_content("#oLog .item")
-    assert "Kitchen iPad started watching from 127.0.0.1" in first
+    # The newest line, once the session's own event is logged (a slow machine logs it a moment later).
+    o.wait_for_function("() => document.querySelector('#oLog .item').textContent.includes('Kitchen iPad started watching from 127.0.0.1')", timeout=10000)
 
 
 def test_the_qr_code_on_screen_decodes_to_the_address_shown(chrome, server):

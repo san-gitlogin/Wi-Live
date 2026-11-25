@@ -43,6 +43,9 @@ def test_clippy_is_clean_for_the_other_platforms(target):
     change cannot break them unseen (Linux uses Zig as its C compiler, tools/)."""
     if not _installed(target):
         pytest.skip(f"rustup target {target} not installed")
+    host = subprocess.run(["rustc", "-vV"], capture_output=True, text=True).stdout
+    if f"host: {target}" in host:
+        pytest.skip("this machine's own target: the plain clippy test covers it")
     import os
     env = dict(os.environ)
     if "linux" in target:

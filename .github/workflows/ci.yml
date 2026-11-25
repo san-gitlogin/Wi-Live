@@ -54,6 +54,10 @@ jobs:
       - name: Static and unit tiers
         run: python tests/run.py
       - name: Browser tiers (real Google Chrome, and WebKit)
+        # Hosted runners are shared VMs without a GPU: their encoders are software,
+        # so the frame floors scale (tests/support/pages.py floor()).
+        env:
+          WILIVE_SOFTWARE_ENCODER: "1"
         run: python tests/run.py --tier e2e
       - name: Latency (reported; hosted runners are shared VMs without a GPU)
         continue-on-error: true

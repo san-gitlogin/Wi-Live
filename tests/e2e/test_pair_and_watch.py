@@ -2,7 +2,7 @@
 hardware H.264. The owner's window and each device are separate pages."""
 import pytest
 
-from support.pages import SOFTWARE, ask, frames, owner_page, pair, sizes_ok, until, viewer_page, wait
+from support.pages import floor, SOFTWARE, ask, frames, owner_page, pair, sizes_ok, until, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -88,7 +88,7 @@ def test_two_devices_watch_at_once_and_the_owner_sees_both(chrome, server):
     pair(owner, a, "Phone A")
     pair(owner, b, "Phone B")
     owner.wait_for_function("() => document.getElementById('oLiveTx').textContent === '2 watching'")
-    assert frames(a, 1.5)["n"] >= 40 and frames(b, 1.5)["n"] >= 40
+    assert frames(a, 1.5)["n"] >= floor(40) and frames(b, 1.5)["n"] >= floor(40)
 
 
 def test_several_displays_each_viewer_chooses_and_an_unplugged_one_falls_back(chrome, make_server):

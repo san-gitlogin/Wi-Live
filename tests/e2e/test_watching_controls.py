@@ -3,7 +3,7 @@ play on, the watchdog, every display at once (arranged and remembered), zoom,
 keyboard, the watermark. Plus the same viewer in WebKit, Safari's engine."""
 import pytest
 
-from support.pages import OPEN, SOFTWARE, frames, owner_page, pair, viewer_page, wait
+from support.pages import floor, OPEN, SOFTWARE, frames, owner_page, pair, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -21,7 +21,7 @@ def test_full_screen_in_and_out_never_stops_the_picture(chrome, server):
         v.keyboard.press("f")  # and out again by key
         v.wait_for_timeout(400)
         assert v.evaluate("document.getElementById('video').paused") is False
-        assert live_frames(v, 1) >= 30, "frames keep coming after leaving full screen"
+        assert live_frames(v, 1) >= floor(30), "frames keep coming after leaving full screen"
     assert v.evaluate("window.__wl.state") == "live"
 
 
@@ -33,7 +33,7 @@ def test_a_paused_stream_plays_on_by_itself(chrome, server):
     v.evaluate("() => document.getElementById('video').pause()")
     v.wait_for_timeout(300)
     assert v.evaluate("document.getElementById('video').paused") is False
-    assert live_frames(v, 1) >= 30
+    assert live_frames(v, 1) >= floor(30)
 
 
 def test_the_watchdog_heals_a_picture_that_stopped_showing(chrome, server):
@@ -44,7 +44,7 @@ def test_the_watchdog_heals_a_picture_that_stopped_showing(chrome, server):
     wait(v, "(window.__wl.healed || 0) > 0", 15)
     v.evaluate("() => { const vid = document.getElementById('video'); delete vid.requestVideoFrameCallback; vid.style.visibility = ''; }")
     wait(v, "window.__wl.state === 'live'", 15)
-    assert live_frames(v, 1) >= 30
+    assert live_frames(v, 1) >= floor(30)
 
 
 def test_every_display_at_once_arranged_and_remembered(chrome, make_server):
@@ -143,7 +143,7 @@ def test_safari_engine_watches_and_plays_on_after_a_pause(pw, server):
         v.goto(server.base + "/")
         pair(o, v, "Safari")
         n = frames(v, 2)
-        assert n["n"] >= 20 and n["w"] == 1280, n
+        assert n["n"] >= floor(20) and n["w"] == 1280, n
         v.evaluate("() => document.getElementById('video').pause()")
         v.wait_for_timeout(400)
         assert v.evaluate("document.getElementById('video').paused") is False

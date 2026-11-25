@@ -89,3 +89,9 @@ def sizes_ok(w, h, full_w, full_h):
     if (w, h) == (full_w, full_h):
         return True
     return SOFTWARE and (w, h) in {(full_w // 2 & ~1, full_h // 2 & ~1), (full_w // 4 & ~1, full_h // 4 & ~1)}
+
+
+def floor(n):
+    """A frame-count floor: as written on a machine with a hardware encoder, a fifth
+    of it (at least 3) on a software encoder (CI's shared VMs, the Windows VM)."""
+    return n if not SOFTWARE else max(3, n // 5)
