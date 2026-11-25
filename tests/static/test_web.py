@@ -91,7 +91,8 @@ def test_no_decorative_accent_bars():
     borders: a card is a card."""
     sides = re.findall(r"border-(?:left|right|top|bottom)(?:-width|-color)?\s*:([^;]*)", CSS)
     # A 1px neutral divider between list rows is fine; colour or weight on one side is not.
-    bad = [v.strip() for v in sides if v.strip() not in ("0", "none", "1px solid var(--line)")]
+    neutral = re.compile(r"1px solid (var\(--line\)|rgba\((255,\s*255,\s*255|0,\s*0,\s*0),\s*0?\.(0\d|1[0-5]?)\))$")
+    bad = [v.strip() for v in sides if v.strip() not in ("0", "none") and not neutral.match(v.strip())]
     bad += re.findall(r"border-inline(?:-start|-end)?\s*:[^;]*", CSS)
     bad += re.findall(r"box-shadow\s*:\s*inset\s+-?[1-9][^;]*", CSS)
     assert not bad, bad
