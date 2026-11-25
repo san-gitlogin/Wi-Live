@@ -5,9 +5,10 @@ set -e
 cd "$(dirname "$0")"
 A=../crates/wilive/assets
 mkdir -p $A
-FRAME='M38 10H17a9 9 0 0 0-9 9v26a9 9 0 0 0 9 9h30a9 9 0 0 0 9-9V26'
+FRAME='M40 8H22C13 8 8 13 8 22v20c0 9 5 14 14 14h20c9 0 14-5 14-14V24'
+WPATH='M18.5 24.5l5.75 16 7.75-12 7.75 12 5.75-16'
 svg() { # $1 frame colour, $2 dot (filled|ring), $3 dot colour
-  if [ "$2" = ring ]; then DOT="<circle cx=\"51\" cy=\"13\" r=\"5.5\" fill=\"none\" stroke=\"$3\" stroke-width=\"3\"/>"; else DOT="<circle cx=\"51\" cy=\"13\" r=\"7\" fill=\"$3\"/>"; fi
+  if [ "$2" = ring ]; then DOT="<circle cx=\"52.5\" cy=\"11.5\" r=\"5\" fill=\"none\" stroke=\"$3\" stroke-width=\"3\"/>"; else DOT="<circle cx=\"52.5\" cy=\"11.5\" r=\"6.5\" fill=\"$3\"/>"; fi
   echo "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><path d=\"$FRAME\" fill=\"none\" stroke=\"$1\" stroke-width=\"5.5\" stroke-linecap=\"round\"/>$DOT</svg>"
 }
 # macOS menu bar: idle is a template (the system colours it); live keeps its red dot,
@@ -22,8 +23,8 @@ cat > /tmp/wilive-app.svg <<SVG
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <rect x="80" y="80" width="864" height="864" rx="196" fill="#FAF7F5"/>
   <g transform="translate(192 192) scale(10)">
-    <path d="$FRAME" fill="none" stroke="#1A1414" stroke-width="5.5" stroke-linecap="round"/>
-    <circle cx="51" cy="13" r="7" fill="#E0202E"/>
+    <path d="$FRAME" fill="none" stroke="#1A1414" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="52.5" cy="11.5" r="6.5" fill="#E0202E"/>
     <path d="M19 23l5.5 18 7.5-14 7.5 14 5.5-18" fill="none" stroke="#1A1414" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

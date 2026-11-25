@@ -17,8 +17,12 @@ on it has lost the idea.
 - `brand/tray.svg` (tray and menu bar, 16 to 22 px): the frame and the dot only,
   because the W turns to mud below 24 px. On macOS it is a template image, and the dot
   is red only while someone is watching. That is the Live mark (R-25).
-- Strokes are round-capped, 5.5 units on a 64 grid (4.5 for the W). Judge any
-  change at 16, 24 and 48 px in both themes, not at design size.
+- Geometry (2026-11-26, refined at the owner's request: "aligned properly, like Apple
+  products"): a 64-unit grid; the frame has continuous-curvature corners (radius 14);
+  the live dot (r 6.5) sits exactly where the top-right corner's curve would be, and the
+  frame's two ends stop symmetrically around it. One stroke family: 5 for the frame, 4.6
+  for the W (optically equal). The W is centred on the frame's inner space, and its middle
+  peak sits lower than its tops. Judge any change at 16, 24 and 48 px in both themes.
 - Never: gradients, a drop shadow, a second accent colour, or the dot in any colour
   but live red.
 

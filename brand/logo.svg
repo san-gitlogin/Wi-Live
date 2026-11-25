@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M38 10H17a9 9 0 0 0-9 9v26a9 9 0 0 0 9 9h30a9 9 0 0 0 9-9V26" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/><circle cx="51" cy="13" r="7" fill="#E0202E"/><path d="M19 23l5.5 18 7.5-14 7.5 14 5.5-18" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Wi-Live">
+  <!-- 64-unit grid. The frame's top-right corner is the live dot: centred where the
+       corner's curve would be, the two ends stopping symmetrically around it. One
+       stroke weight; the W optically centred, its middle peak lower than its tops. -->
+  <path d="M40 8H22C13 8 8 13 8 22v20c0 9 5 14 14 14h20c9 0 14-5 14-14V24" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="52.5" cy="11.5" r="6.5" fill="#E0202E"/>
+  <path d="M18.5 24.5l5.75 16 7.75-12 7.75 12 5.75-16" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
