@@ -120,10 +120,10 @@ pub fn open(which: Input, sink: Sink, ended: Ended) -> Result<Box<dyn Running>, 
         minreq: u32::MAX,
         fragsize: READ_BYTES as u32,
     };
-    let name = CString::new("HID-Fi Companion").expect("no NUL");
+    let name = CString::new("Wi-Live").expect("no NUL");
     let stream = CString::new(match which {
-        Input::System => "the computer's sound, for the HID-Fi dashboard",
-        Input::Microphone => "the microphone, for the HID-Fi dashboard",
+        Input::System => "the computer's sound, for Wi-Live",
+        Input::Microphone => "the microphone, for Wi-Live",
     })
     .expect("no NUL");
     let dev = CString::new("@DEFAULT_MONITOR@").expect("no NUL");

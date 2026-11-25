@@ -348,7 +348,7 @@ unsafe fn build(sink: Sink) -> Result<Tap, String> {
         );
         d.insert(
             &*cstr(kAudioAggregateDeviceNameKey),
-            &*Retained::into_super(NSString::from_str("HID-Fi sound")),
+            &*Retained::into_super(NSString::from_str("Wi-Live sound")),
         );
         d.insert(
             &*cstr(kAudioAggregateDeviceMainSubDeviceKey),

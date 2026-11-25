@@ -320,7 +320,7 @@ pub fn open(which: Input, sink: Sink, ended: Ended) -> Result<Box<dyn Running>, 
         if e.to_lowercase().contains("not") && e.to_lowercase().contains("allow")
             || e.contains("declined")
         {
-            "Screen Recording is not allowed for HID-Fi Companion".to_string()
+            "Screen Recording is not allowed for Wi-Live".to_string()
         } else {
             e
         }
@@ -391,7 +391,7 @@ pub fn open(which: Input, sink: Sink, ended: Ended) -> Result<Box<dyn Running>, 
                     if e.to_lowercase().contains("microphone")
                         || e.to_lowercase().contains("not authorized") =>
                 {
-                    "Microphone access is not allowed for HID-Fi Companion".to_string()
+                    "Microphone access is not allowed for Wi-Live".to_string()
                 }
                 _ => e,
             })?;

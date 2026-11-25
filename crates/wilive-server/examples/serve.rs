@@ -13,7 +13,37 @@
 
 use std::sync::Arc;
 use wilive_server::signal::Media;
-use wilive_server::state::{NoPersist, State};
+use wilive_server::state::{Host, NoPersist, State};
+
+/// WILIVE_TEST_HOST=1: switches and a screen-recording permission that starts
+/// refused and is granted when asked, so the owner window's controls can be tested.
+#[derive(Default)]
+struct TestHost {
+    allowed: std::sync::atomic::AtomicBool,
+    sw: std::sync::Mutex<Vec<(&'static str, bool)>>,
+}
+impl Host for TestHost {
+    fn capture_allowed(&self) -> bool {
+        self.allowed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    fn ask_capture(&self) {
+        self.allowed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn switches(&self) -> Vec<(&'static str, bool)> {
+        self.sw.lock().unwrap().clone()
+    }
+    fn set_switch(&self, name: &str, on: bool) -> bool {
+        let mut sw = self.sw.lock().unwrap();
+        match sw.iter_mut().find(|(k, _)| *k == name) {
+            Some(x) => {
+                x.1 = on;
+                true
+            }
+            None => false,
+        }
+    }
+}
 use wilive_stream::pattern::{FakeDisplays, Pattern};
 use wilive_stream::pipeline::{Pipeline, Source};
 
@@ -86,13 +116,19 @@ fn main() {
     });
     let token = wilive_core::pair::random_hex(24);
     let name = std::env::var("WILIVE_NAME").unwrap_or_else(|_| "Test computer".into());
-    let state = Arc::new(State::new(
+    let mut state = State::new(
         &name,
         token.clone(),
         Default::default(),
         Default::default(),
         Box::new(NoPersist),
-    ));
+    );
+    if std::env::var_os("WILIVE_TEST_HOST").is_some() {
+        let h = TestHost::default();
+        *h.sw.lock().unwrap() = vec![("sound", true), ("mic", false), ("start_at_login", true)];
+        state = state.with_host(Box::new(h));
+    }
+    let state = Arc::new(state);
     let f3 = fake.clone();
     let displays: wilive_server::signal::Displays = Box::new(move || {
         if real {

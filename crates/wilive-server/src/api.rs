@@ -120,6 +120,11 @@ struct Rename {
 struct On {
     on: bool,
 }
+#[derive(Deserialize)]
+struct Switch {
+    name: String,
+    on: bool,
+}
 
 /// Whether this request comes from the owner's window.
 pub fn is_owner(st: &State, req: &Request, peer: IpAddr) -> bool {
@@ -250,6 +255,8 @@ pub fn owner_state(st: &State, urls: &[String]) -> serde_json::Value {
         "pending": lock(&st.pending).views(st.ms()),
         "devices": lock(&st.devices).views(),
         "log": lock(&st.log).recent(100),
+        "capture_allowed": st.host.capture_allowed(),
+        "switches": st.host.switches().into_iter().map(|(k, v)| (k.to_string(), serde_json::Value::Bool(v))).collect::<serde_json::Map<_, _>>(),
     })
 }
 
@@ -351,6 +358,20 @@ fn owner(st: &State, req: &Request, urls: &[String]) -> Response {
             }
             if was != b.on {
                 st.record(if b.on { Kind::Paused } else { Kind::Resumed }, "", "", "");
+            }
+            ok()
+        }
+        ("POST", "/api/owner/capture") => {
+            st.host.ask_capture();
+            ok()
+        }
+        ("POST", "/api/owner/switch") => {
+            let b: Switch = match body(req) {
+                Ok(b) => b,
+                Err(r) => return r,
+            };
+            if !st.host.set_switch(&b.name, b.on) {
+                return refuse(Refuse::Unknown);
             }
             ok()
         }

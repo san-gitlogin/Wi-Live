@@ -198,7 +198,7 @@ fn run(
         let format = format?;
         init.map_err(|e| match which {
             Input::Microphone if e.code().0 as u32 == 0x8007_0005 => {
-                "Microphone access is not allowed for HID-Fi Companion".to_string()
+                "Microphone access is not allowed for Wi-Live".to_string()
             }
             _ => e.message(),
         })?;

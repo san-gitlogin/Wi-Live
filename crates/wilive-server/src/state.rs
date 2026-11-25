@@ -16,6 +16,28 @@ pub trait Persist: Send + Sync {
     fn save_log(&self, json: &str);
 }
 
+/// What only the app on this computer can answer or change: the OS's screen
+/// recording permission, and the owner's switches (sound, microphone, start at
+/// login). The `serve` example has none of these.
+pub trait Host: Send + Sync {
+    fn capture_allowed(&self) -> bool {
+        true
+    }
+    /// Asks the OS for screen recording permission (macOS shows its dialog once).
+    fn ask_capture(&self) {}
+    /// The switches, by name: "sound", "mic", "start_at_login".
+    fn switches(&self) -> Vec<(&'static str, bool)> {
+        Vec::new()
+    }
+    /// Sets one; false if this host has no such switch.
+    fn set_switch(&self, _name: &str, _on: bool) -> bool {
+        false
+    }
+}
+
+pub struct NoHost;
+impl Host for NoHost {}
+
 /// Keeps nothing (tests, and `serve` runs that must leave no trace).
 pub struct NoPersist;
 impl Persist for NoPersist {
@@ -77,6 +99,7 @@ pub struct State {
     pub paused: AtomicBool,
     pub live: Mutex<Vec<Arc<Live>>>,
     persist: Box<dyn Persist>,
+    pub host: Box<dyn Host>,
     started: Instant,
     seq: AtomicU64,
 }
@@ -98,9 +121,15 @@ impl State {
             paused: AtomicBool::new(false),
             live: Mutex::default(),
             persist,
+            host: Box::new(NoHost),
             started: Instant::now(),
             seq: AtomicU64::new(1),
         }
+    }
+
+    pub fn with_host(mut self, host: Box<dyn Host>) -> Self {
+        self.host = host;
+        self
     }
 
     /// Milliseconds since start: the pairing table's clock.

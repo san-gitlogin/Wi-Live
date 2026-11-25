@@ -77,6 +77,10 @@
     <button class="switch" id="oPause" role="switch" aria-checked="true" aria-label="Sharing on"></button>
   </header>
   <div class="msg err" id="oPausedMsg" role="status" hidden>Sharing is paused. Nobody can watch until you turn it back on.</div>
+  <section class="card notice" id="oPerm" hidden>
+    <div class="row"><div class="grow"><h3>Allow screen recording</h3><p class="note">Your computer asks once. Until then, devices can connect but see no picture.</p></div>
+    <button class="btn primary" id="oPermBtn" type="button">Allow</button></div>
+  </section>
   <section class="card" id="oAsks" hidden>
     <div class="card-head"><h2>Wants to watch</h2></div>
     <div id="oAskList"></div>
@@ -93,6 +97,10 @@
       <p class="note">Only devices you allow can watch. You will see a code to compare.</p>
     </section>
   </div>
+  <section class="card mt16" id="oThis" hidden>
+    <div class="card-head"><h2>This computer</h2></div>
+    <ul class="list" id="oSwitches"></ul>
+  </section>
   <section class="card mt16">
     <div class="card-head"><h2>Allowed devices</h2></div>
     <ul class="list" id="oDevList"></ul>

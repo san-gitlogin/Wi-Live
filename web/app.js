@@ -379,9 +379,17 @@
         el('div', { class: 'sub', text: l.agent + ' at ' + l.addr + ' for ' + dur(l.since) }),
         el('div', { class: 'stats' },
           stat(l.fps, 'fps'), stat(l.width ? l.width + 'x' + l.height : '-', 'picture'),
-          stat(l.lat_p50 ? l.lat_p50 + ' ms' : '-', 'delay'), stat(l.sound ? 'On' : 'Off', 'sound'))),
+          stat(l.lat_p50 ? l.lat_p50 + ' ms' : '-', 'link delay'), stat(l.sound ? 'On' : 'Off', 'sound'))),
       el('button', { class: 'btn small', type: 'button', 'data-act': 'end', text: 'End', onclick: () => act('/api/owner/end', { id: l.id }) })))
       : [el('li', { class: 'empty', text: 'Nobody is watching this computer.' })]));
+    // permission and switches (only the app has them; the test server has none)
+    $('oPerm').hidden = s.capture_allowed !== false;
+    const sw = Object.entries(s.switches || {});
+    $('oThis').hidden = !sw.length;
+    const SW = { sound: ['Share this computer\'s sound', 'Viewers hear what this computer plays.'], mic: ['Share the microphone', 'Viewers hear this computer\'s microphone.'], start_at_login: ['Start at login', 'Wi-Live is ready whenever this computer is.'] };
+    $('oSwitches').replaceChildren(...sw.filter(([k]) => SW[k]).map(([k, on]) => el('li', { class: 'item' },
+      el('div', { class: 'grow' }, el('div', { class: 'title', text: SW[k][0] }), el('div', { class: 'sub', text: SW[k][1] })),
+      el('button', { class: 'switch', role: 'switch', type: 'button', 'data-switch': k, 'aria-checked': String(!!on), 'aria-label': SW[k][0], onclick: () => act('/api/owner/switch', { name: k, on: !on }) }))));
     // where to open
     $('oUrls').replaceChildren(...(s.urls.length ? s.urls.map(u => el('div', {}, el('a', { class: 'url', href: u, text: u, target: '_blank', rel: 'noopener' })))
       : [el('div', { class: 'msg', text: 'This computer is not on a home network right now.' })]));
@@ -409,6 +417,7 @@
   function owner() {
     show('vOwner');
     $('oPause').addEventListener('click', () => act('/api/owner/pause', { on: $('oPause').getAttribute('aria-checked') === 'true' }));
+    $('oPermBtn').addEventListener('click', () => act('/api/owner/capture', {}));
     refresh();
     setInterval(refresh, 1000);
   }

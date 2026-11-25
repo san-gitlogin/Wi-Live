@@ -122,7 +122,7 @@ pub fn screen(display: Option<u32>, fps: u32) -> Result<Box<dyn pipeline::Source
         // must not put a system dialog in front of the person, again and again.
         // The app shows "Allow Screen Recording", and only that click asks.
         if !sck::allowed() {
-            return Err("Screen Recording is not allowed for HID-Fi Companion".into());
+            return Err("Screen Recording is not allowed for Wi-Live".into());
         }
         sck::ScreenSource::start(display, fps).map(|s| Box::new(s) as Box<dyn pipeline::Source>)
     }

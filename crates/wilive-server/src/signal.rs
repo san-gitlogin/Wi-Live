@@ -492,11 +492,17 @@ pub fn serve(
     } else if end == End::PipelineGone {
         match media.pipeline.last_error() {
             Some(e) if e.contains("Screen Recording") => "permission".to_string(),
-            Some(_) => "capture".to_string(),
-            None => format!("{end:?}"),
+            _ => "capture".to_string(),
         }
     } else {
-        format!("{end:?}")
+        match end {
+            End::Stopped => "left",
+            End::Disconnected => "network",
+            End::NeverConnected => "never_connected",
+            End::PipelineGone => "capture",
+            End::Failed(_) => "failed",
+        }
+        .to_string()
     };
     let secs = started.elapsed().as_secs();
     st.record(

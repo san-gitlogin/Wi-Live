@@ -1,0 +1,27 @@
+[package]
+name = "wilive"
+description = "Wi-Live: this computer's screen, sound and microphone, live on any device in your home network."
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "wilive"
+path = "src/main.rs"
+
+[dependencies]
+wilive-core = { path = "../wilive-core" }
+wilive-stream = { path = "../wilive-stream" }
+wilive-server = { path = "../wilive-server" }
+dirs = "7.0.0"
+log = "0.4.34"
+hex = "0.4.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+png = "0.18.1"
+
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+tray-icon = "0.24.2"
+tao = "0.37.1"
+wry = "0.57"
