@@ -85,6 +85,8 @@ def test_the_phone_is_remembered_and_goes_straight_to_the_picture(chrome, iphone
 def test_picture_in_picture_never_fails_silently_on_an_iphone(chrome, iphone, server):
     """Owner, 2026-11-26: picture in picture did nothing in the page the camera opened.
     Whatever the browser allows, the person sees it work or is told why."""
+    # An iPhone's Safari has Apple's picture-in-picture API (Linux's WebKit does not).
+    iphone.add_init_script("if (!HTMLVideoElement.prototype.webkitSetPresentationMode) { HTMLVideoElement.prototype.webkitSetPresentationMode = function () {}; HTMLVideoElement.prototype.webkitSupportsPresentationMode = function () { return false; }; }")
     o = owner_page(chrome, server)
     v = iphone.new_page()
     v.goto(server.base + "/")

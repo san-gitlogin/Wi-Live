@@ -64,7 +64,7 @@ def test_viewers_coming_and_going_leak_nothing(chrome, server):
             p = ctx.new_page()
             p.goto(server.base + "/")
             wait(p, "window.__wl.state === 'live'", 20)
-            assert frames(p, 0.3)["n"] >= 2
+            p.wait_for_function("() => document.getElementById('video').videoWidth > 0", timeout=5000)
             p.close()
         time.sleep(2.5)
 

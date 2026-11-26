@@ -1,0 +1,7 @@
+# Signed bytes must stay exactly as signed: no line-ending conversion on checkout
+# (Windows CI turned the v0.1.0 SHA256SUMS into CRLF and its signature failed).
+vectors/release-* -text
+*.sig binary
+*.png binary
+*.ico binary
+*.woff2 binary
