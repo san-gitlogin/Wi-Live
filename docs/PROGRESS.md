@@ -85,4 +85,4 @@ A legacy floor guard (Safari 12.1 / Chrome 70 / Firefox 68).
    (docs/HTTPS.md).
 2. The Linux tray on a desktop with a tray host (KDE, or GNOME with its extension):
    checked in a container without one so far.
-3. Windows self-update tested in the Windows VM (the macOS path is proven end to end).
+3. Windows self-update: proven in the VM (tests/windows/update_e2e.py); Linux self-update by the same swap, not yet run in the VM.
