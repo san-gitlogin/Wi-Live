@@ -381,7 +381,13 @@ pub fn serve(
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(_) => {
-                        lock(&fwd_ended).get_or_insert(End::PipelineGone);
+                        // The picture's feed closed. While the session runs, that is the
+                        // capture failing; once it is stopping (the viewer left, and the
+                        // feed is closed by our own unsubscribe) it is not: the owner's log
+                        // said "(capture)" for every closed tab (2026-11-26).
+                        if !fwd_stop.load(Ordering::Relaxed) {
+                            lock(&fwd_ended).get_or_insert(End::PipelineGone);
+                        }
                         fwd_stop.store(true, Ordering::Relaxed);
                         break;
                     }

@@ -10,7 +10,9 @@
 //! WILIVE_SOUND=test|real  a test tone (clicks each second) or the real sound
 //! WILIVE_PORT=p       exactly this port
 //! WILIVE_DEMO_IMAGE=a.png  a still picture as the screen (README screenshots; never a real screen)
-//! WILIVE_DEMO_FRAMES=dirA,dirB  a made-up screen per display, played from f00000.png... in a loop (films)
+//! WILIVE_DEMO_FRAMES=dirA,dirB  a made-up screen per display, played from f00000.png... in a loop (films);
+//!                    an entry "auto|sharp" names the same screen rendered at two sizes: Sharp
+//!                    opens the second, as the real capture opens a Retina screen at full size
 //! WILIVE_HOME=dir     keep devices and the log in dir across restarts (as the app does)
 //! WILIVE_FILL_LOG=n   start with n made-up log events; WILIVE_FILL_DEVICES=n with n devices
 //! stdin: "still" / "move" (freeze the pattern), "unplug <id>" (take a display away)
@@ -56,14 +58,16 @@ impl Still {
 }
 
 /// A made-up screen that moves (WILIVE_DEMO_FRAMES): numbered PNGs played one per
-/// grab, in a loop, read from disk one at a time so a long sequence costs no memory.
+/// grab, in a loop. Four threads decode ahead, in order, a few frames at most, so a
+/// 4K sequence keeps up at 30 fps and costs no more memory than a handful of frames.
 struct Frames {
-    files: Vec<std::path::PathBuf>,
-    at: usize,
+    rx: Vec<std::sync::mpsc::Receiver<(u32, u32, Vec<u8>)>>,
+    next: usize,
     w: u32,
     h: u32,
     bgra: Vec<u8>,
 }
+const DECODERS: usize = 4;
 impl Frames {
     fn open(dir: &str) -> Frames {
         let mut files: Vec<_> = std::fs::read_dir(dir)
@@ -74,9 +78,33 @@ impl Frames {
         files.sort();
         assert!(!files.is_empty(), "no PNG frames in {dir}");
         let (w, h, bgra) = decode(&files[0]);
+        let files = Arc::new(files);
+        // One clock for the whole run: a screen opened again (a viewer back after a pause,
+        // another quality) carries on where it was, as a real screen would, never from
+        // its first frame.
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let now = (START
+            .get_or_init(std::time::Instant::now)
+            .elapsed()
+            .as_secs_f64()
+            * 30.0) as usize;
+        let rx = (0..DECODERS)
+            .map(|k| {
+                let (tx, rx) = std::sync::mpsc::sync_channel(2);
+                let files = files.clone();
+                std::thread::spawn(move || {
+                    // Worker k decodes frames now+k, now+k+4 ... until the source is dropped.
+                    let mut i = (now + k) % files.len();
+                    while tx.send(decode(&files[i])).is_ok() {
+                        i = (i + DECODERS) % files.len();
+                    }
+                });
+                rx
+            })
+            .collect();
         Frames {
-            files,
-            at: 0,
+            rx,
+            next: 0,
             w,
             h,
             bgra,
@@ -92,11 +120,13 @@ impl Source for Frames {
         _force: bool,
         f: &mut dyn FnMut(&wilive_stream::frame::Frame),
     ) -> Result<bool, String> {
-        let (w, h, bgra) = decode(&self.files[self.at]);
-        if (w, h) == (self.w, self.h) {
-            self.bgra = bgra;
+        // The next frame in order; if its decoder is behind, the last one again.
+        if let Ok((w, h, bgra)) = self.rx[self.next].try_recv() {
+            if (w, h) == (self.w, self.h) {
+                self.bgra = bgra;
+            }
+            self.next = (self.next + 1) % DECODERS;
         }
-        self.at = (self.at + 1) % self.files.len();
         f(&wilive_stream::frame::Frame {
             width: self.w,
             height: self.h,
@@ -106,6 +136,7 @@ impl Source for Frames {
         Ok(true)
     }
 }
+
 impl Source for Still {
     fn size(&self) -> (u32, u32) {
         (self.w, self.h)
@@ -204,7 +235,10 @@ fn main() {
             if let Ok(dirs) = std::env::var("WILIVE_DEMO_FRAMES") {
                 let dirs: Vec<&str> = dirs.split(',').collect();
                 let i = d.unwrap_or(1).saturating_sub(1) as usize;
-                Ok(Box::new(Frames::open(dirs[i.min(dirs.len() - 1)])))
+                let entry = dirs[i.min(dirs.len() - 1)];
+                let (auto, sharp) = entry.split_once('|').unwrap_or((entry, entry));
+                let sharp_on = wilive_stream::edge::get() >= wilive_stream::edge::SHARP;
+                Ok(Box::new(Frames::open(if sharp_on { sharp } else { auto })))
             } else if let Ok(path) = std::env::var("WILIVE_DEMO_IMAGE") {
                 Ok(Box::new(Still::open(&path)))
             } else if real {

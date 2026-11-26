@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **The activity log says why a viewer stopped, correctly.** A device that closed its page
+  was logged "stopped watching ... (capture)", as if the screen capture had failed: our
+  own clean-up on the way out was read as the picture's feed failing. It now says "(left)".
+- Test server, for films: a made-up screen per display that moves (`WILIVE_DEMO_FRAMES`,
+  Auto and Sharp sizes), and the pretend displays' sizes (`WILIVE_DISPLAY_SIZES`).
+
 ## v0.2.1 - 2026-11-26
 
 A fix release: please take it.

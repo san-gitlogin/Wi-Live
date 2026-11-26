@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from support.pages import ask, owner_page, pair, viewer_page, wait
+from support.pages import ask, owner_page, pair, playing, viewer_page, wait
 
 pytestmark = pytest.mark.e2e
 
@@ -98,3 +98,22 @@ def test_without_screen_recording_a_device_waits_calmly_and_starts_when_allowed(
     wait(v, "window.__wl.state === 'live'", 15)
     o.wait_for_selector("#oLiveList [data-live]", timeout=10000)
     assert not v.errors
+
+
+def test_a_viewer_that_closes_its_page_is_logged_as_left_never_as_a_capture_failure(chrome, server):
+    """2026-11-26: every closed tab was logged "stopped watching ... (capture)" - our own
+    unsubscribe on the way out was read as the screen capture failing."""
+    o = owner_page(chrome, server)
+    v = viewer_page(chrome, server)
+    pair(o, v, "Closing phone")
+    playing(v, 5)
+    v.close()
+    end = time.time() + 10
+    ended = []
+    while time.time() < end and not ended:
+        _, st = server.owner_api("GET", "/api/owner/state")
+        ended = [e for e in st["log"] if e["kind"] == "ended" and e["who"] == "Closing phone"]
+        time.sleep(.3)
+    assert ended, "the end of the session was logged"
+    assert "(capture)" not in ended[0]["detail"], ended[0]["detail"]
+    assert "(left)" in ended[0]["detail"] or "(network)" in ended[0]["detail"], ended[0]["detail"]
