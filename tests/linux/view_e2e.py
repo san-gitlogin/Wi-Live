@@ -105,11 +105,16 @@ async def main():
         await asyncio.sleep(0.25)
         if any(is_size(f[1], f[2], 1280, 1200) for f in frames[n0:]):
             break
+    await asyncio.sleep(1.5)  # a few frames of the new display, not just the first one
     rf = [f for f in frames[n0:] if is_size(f[1], f[2], 1280, 1200)]
     check("switching shows the right display at its own shape", bool(rf), sorted({(f[1], f[2]) for f in frames[n0:]})[:4])
     if rf:
         r, g, b = rf[-1][3]
         check("and it is the blue one", b > 120 and r < 80, f"rgb {r:.0f},{g:.0f},{b:.0f}")
+        # CI (ARM, 2026-11-26) once read red off the first frame at the new shape. A frame
+        # in the new display's shape showing the OLD display would be a visible flash.
+        stale = [f for f in rf if f[3][0] > 120 and f[3][2] < 80]
+        check("no frame in the new shape shows the old display", not stale, f"{len(stale)} of {len(rf)} red")
     ws.send({"t": "bye"})
     await pc.close()
 
