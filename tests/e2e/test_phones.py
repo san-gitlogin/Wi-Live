@@ -3,7 +3,7 @@ upright and turned on its side with a notch. The owner's iPhone, turned sideways
 had controls that did not answer; and the camera's own Safari view forgot the phone."""
 import pytest
 
-from support.pages import floor, OPEN, frames, owner_page, pair, wait
+from support.pages import floor, OPEN, frames, owner_page, pair, playing, wait
 
 pytestmark = pytest.mark.e2e
 NOTCH = 47  # an iPhone's sensor housing in landscape, in CSS px
@@ -43,7 +43,7 @@ def test_turned_sideways_every_control_answers_one_tap_clear_of_the_notch(chrome
     v = iphone.new_page()
     v.goto(server.base + "/")
     pair(o, v, "iPhone")
-    assert frames(v, 1.5)["n"] >= floor(20)
+    assert playing(v, floor(20))
     v.set_viewport_size({"width": 844, "height": 390})
     notch(v)
     v.wait_for_timeout(3600)  # the bar fades
@@ -67,7 +67,7 @@ def test_turned_sideways_every_control_answers_one_tap_clear_of_the_notch(chrome
     v.set_viewport_size({"width": 390, "height": 844})
     v.wait_for_timeout(500)
     assert v.evaluate("document.getElementById('video').paused") is False
-    assert frames(v, 1.5)["n"] >= floor(20)
+    assert playing(v, floor(20))
     assert v.evaluate("window.__wl.state") == "live"
 
 

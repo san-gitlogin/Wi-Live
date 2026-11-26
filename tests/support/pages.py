@@ -95,3 +95,13 @@ def floor(n):
     """A frame-count floor: as written on a machine with a hardware encoder, a fifth
     of it (at least 3) on a software encoder (CI's shared VMs, the Windows VM)."""
     return n if not SOFTWARE else max(3, n // 5)
+
+
+def playing(pg, n, timeout=10):
+    """The picture keeps coming: the video's own decoded-frame count rises by `n` within
+    `timeout` s. WebKitGTK on a slow runner calls back for few frames while decoding
+    them all, so frame callbacks are not the measure there (CI, 2026-11-26)."""
+    q = "(() => { const v = document.getElementById('video'); return v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality().totalVideoFrames : 0; })()"
+    start = pg.evaluate(q)
+    pg.wait_for_function(f"(s) => {q} - s >= {n}", arg=start, timeout=timeout * 1000)
+    return True
