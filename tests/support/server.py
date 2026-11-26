@@ -51,6 +51,7 @@ class Server:
             raise RuntimeError("serve did not start: " + self.log_path.read_text()[-2000:])
         info = json.loads(line)
         self.port, self.owner, self.fp = info["port"], info["owner"], info["fp"]
+        self.owner_link = info.get("owner_link", "")
         self.base = f"http://127.0.0.1:{self.port}"
 
     def say(self, line):

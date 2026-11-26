@@ -34,7 +34,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The longest edge sent; a Retina screen is scaled down to this on the GPU.
-pub const MAX_EDGE: u32 = 1920;
+/// The largest a capture gets (a viewer chose Sharp); see [`crate::edge`].
+pub const MAX_EDGE: u32 = crate::edge::SHARP;
 const PIXEL_BGRA: u32 = u32::from_be_bytes(*b"BGRA");
 // SCFrameStatus values (SCStream.h): Complete = 0, Started = 4.
 const STATUS_COMPLETE: i64 = 0;
@@ -72,6 +73,8 @@ impl Drop for Pixels {
 struct Latest {
     pixels: Option<Pixels>,
     fresh: bool,
+    /// Rung on every new frame (the pipeline takes it at once).
+    waker: Arc<crate::pipeline::Waker>,
 }
 
 struct Ivars {
@@ -136,6 +139,7 @@ define_class!(
                 if let Ok(mut l) = self.ivars().latest.lock() {
                     l.pixels = Some(px); // the old one is released here
                     l.fresh = true;
+                    l.waker.ring();
                 }
             }
         }
@@ -153,16 +157,7 @@ impl Output {
 /// Output size for a display of `w`x`h` pixels: the same aspect, longest edge
 /// at most [`MAX_EDGE`], even numbers (H.264).
 pub fn fit(w: u32, h: u32) -> (u32, u32) {
-    let (w, h) = (w.max(2), h.max(2));
-    let long = w.max(h);
-    let scale = if long > MAX_EDGE {
-        MAX_EDGE as f64 / long as f64
-    } else {
-        1.0
-    };
-    let ew = ((w as f64 * scale).round() as u32).max(16) & !1;
-    let eh = ((h as f64 * scale).round() as u32).max(16) & !1;
-    (ew, eh)
+    crate::edge::fit(w, h, crate::edge::get())
 }
 
 fn shareable() -> Result<Retained<SCShareableContent>, String> {
@@ -253,7 +248,8 @@ impl ScreenSource {
             config.setHeight(h as usize);
             config.setPixelFormat(PIXEL_BGRA);
             config.setShowsCursor(true);
-            config.setQueueDepth(4);
+            // The shortest queue ScreenCaptureKit allows: fewer frames waiting in it.
+            config.setQueueDepth(3);
             config.setScalesToFit(true);
             config.setMinimumFrameInterval(CMTime {
                 value: 1,
@@ -307,6 +303,10 @@ impl ScreenSource {
 impl Source for ScreenSource {
     fn size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    fn waker(&self) -> Option<Arc<crate::pipeline::Waker>> {
+        self.latest.lock().ok().map(|l| l.waker.clone())
     }
 
     fn grab(&mut self, force: bool, f: &mut dyn FnMut(&Frame)) -> Result<bool, String> {
@@ -387,14 +387,24 @@ mod tests {
 
     #[test]
     fn fit_keeps_aspect_and_caps_the_long_edge() {
-        assert_eq!(fit(3024, 1964), (1920, 1246));
-        assert_eq!(fit(1920, 1080), (1920, 1080));
-        assert_eq!(fit(1280, 800), (1280, 800));
-        assert_eq!(fit(1080, 1920), (1080, 1920));
-        assert_eq!(fit(2160, 3840), (1080, 1920));
-        assert_eq!(fit(1366, 768), (1366, 768));
-        assert_eq!(fit(1, 1), (16, 16));
-        assert_eq!(fit(5120, 1440), (1920, 540));
+        use crate::edge::{AUTO, SHARP};
+        let f = crate::edge::fit;
+        assert_eq!(f(3024, 1964, AUTO), (1920, 1246), "fast by default");
+        assert_eq!(f(3024, 1964, SHARP), (3024, 1964), "Sharp: its own size");
+        assert_eq!(f(1920, 1080, AUTO), (1920, 1080));
+        assert_eq!(f(1280, 800, AUTO), (1280, 800));
+        assert_eq!(f(1080, 1920, AUTO), (1080, 1920));
+        assert_eq!(f(2160, 3840, SHARP), (2160, 3840));
+        assert_eq!(f(1366, 768, AUTO), (1366, 768));
+        assert_eq!(f(1, 1, AUTO), (16, 16));
+        assert_eq!(f(5120, 1440, SHARP), (3840, 1080));
+        crate::edge::set(SHARP);
+        assert_eq!(
+            fit(3024, 1964),
+            (3024, 1964),
+            "the capturing thread's choice"
+        );
+        crate::edge::set(AUTO);
     }
 
     // Opt-in: without permission, listing screens can make macOS show its

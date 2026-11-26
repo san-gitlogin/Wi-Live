@@ -210,3 +210,4 @@ button, select, a, .tile { touch-action: manipulation; -webkit-tap-highlight-col
 .seg button { min-height: 34px; border: 0; border-radius: 8px; background: rgba(255,255,255,.06); color: #F6F1EF; font: 500 13px/1 var(--font); cursor: pointer; }
 .seg button[aria-checked="true"] { background: #F6F1EF; color: #1A1414; }
 .seg button:focus-visible { outline: 2px solid #F6F1EF; outline-offset: 1px; }
+.toast { position: fixed; left: 50%; bottom: max(64px, calc(var(--sab) + 56px)); transform: translateX(-50%); z-index: 7; max-width: min(440px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 12px; background: rgba(24,19,19,.95); color: #F6F1EF; font-size: 14px; line-height: 1.4; box-shadow: 0 10px 30px rgba(0,0,0,.45); text-align: center; }

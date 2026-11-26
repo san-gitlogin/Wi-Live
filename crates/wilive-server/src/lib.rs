@@ -283,6 +283,9 @@ fn connection(c: &Arc<Ctx>, mut stream: TcpStream, peer: SocketAddr) {
 }
 
 fn route(c: &Ctx, req: &Request, peer: IpAddr) -> Response {
+    if req.method == "GET" && req.path == "/owner" {
+        return api::owner_login(&c.state, req, peer);
+    }
     if let Some(r) = api::handle(&c.state, req, peer, &c.urls()) {
         return r;
     }

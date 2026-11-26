@@ -5,3 +5,4 @@ pub mod devices;
 pub mod log;
 pub mod pair;
 pub mod pending;
+pub mod update;

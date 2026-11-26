@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.0 - 2026-11-26
+
+- **Updates by themselves, safely.** Once a day Wi-Live checks for a new version; the
+  release's signature is checked against the key built into the app before anything else,
+  the download must match the signed list, and on a Mac the new app must carry Wi-Live's
+  own certificate. Nothing installs until you choose "Install and restart" in the window.
+- **Linux has a tray icon.** "Open Wi-Live" opens the owner's window in your browser
+  through a one-time link (this computer only, used once); without a tray host Wi-Live
+  says so and keeps working.
+- **Sharp shows a Retina or 4K screen at its own size.** Auto stays fast (the long edge
+  capped at 1920); Sharp reopens the capture at full size, up to 4K, while you want it.
+- **Picture in picture on iPhone** uses iOS's own way, and if a browser refuses it
+  (the camera's mini browser can), Wi-Live says so and how to get it.
+- **Faster frame pickup:** each new frame is taken the moment the screen capture delivers
+  it (56 fps reaching the viewer on a real screen, from 52).
+- **Windows:** the app's icon and version in the .exe and the title bar.
+- **Every faded control answers its first click or tap**, on desktops too.
+- **Measured honestly:** the latency probe now reads a two-row, self-checking time strip,
+  sets aside frames the browser had already replaced, and a real-screen probe measures
+  the installed app end to end (docs/DECISIONS.md D-07, D-10).
+
+
 ## v0.1.0 - 2026-11-26
 
 The first public build. Your computer's screen, sound and microphone on any phone,

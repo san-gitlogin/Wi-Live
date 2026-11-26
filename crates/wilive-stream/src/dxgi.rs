@@ -9,7 +9,7 @@
 //! - "Access lost" (the desktop switched: UAC, lock screen, a resolution change,
 //!   a full-screen game) drops the duplication, which is made again on the next
 //!   grab - at the new size if it changed.
-//! - Wider than 2560 pixels, the picture is halved (a 4K screen becomes 1920).
+//! - Wider than 2560 pixels the picture is halved (3840 when a viewer chose Sharp).
 //!
 //! NOT YET RUN ON WINDOWS: compiled and checked from macOS only. The pixel work
 //! it relies on (convert.rs) is tested; the API calls follow Microsoft's
@@ -38,8 +38,10 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR, DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME,
 };
 
-/// Wider than this, the picture is halved.
-pub const HALVE_ABOVE: usize = 2560;
+/// Wider than this, the picture is halved: see [`crate::edge::halve_above`].
+pub fn halve_above() -> usize {
+    crate::edge::halve_above()
+}
 
 pub struct DxgiSource {
     device: ID3D11Device,
@@ -303,7 +305,7 @@ impl DxgiSource {
 
 impl Source for DxgiSource {
     fn size(&self) -> (u32, u32) {
-        if self.w > HALVE_ABOVE {
+        if self.w > halve_above() {
             ((self.w / 2) as u32, (self.h / 2) as u32)
         } else {
             (self.w as u32, self.h as u32)
@@ -317,7 +319,7 @@ impl Source for DxgiSource {
         }
         self.compose();
         let (w, h) = (self.w, self.h);
-        if w > HALVE_ABOVE {
+        if w > halve_above() {
             let comp = std::mem::take(&mut self.comp);
             let (nw, nh) = halve_bgra(&comp, w * 4, w, h, &mut self.half);
             self.comp = comp;

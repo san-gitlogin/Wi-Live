@@ -248,6 +248,7 @@ fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",
         204 => "No Content",
+        302 => "Found",
         304 => "Not Modified",
         400 => "Bad Request",
         401 => "Unauthorized",

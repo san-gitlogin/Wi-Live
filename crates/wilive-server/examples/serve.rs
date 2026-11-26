@@ -203,9 +203,10 @@ fn main() {
         },
     )
     .expect("listening");
+    let link = srv.state.owner_link();
     println!(
         "{}",
-        serde_json::json!({"port": srv.port, "owner": token, "fp": fp})
+        serde_json::json!({"port": srv.port, "owner": token, "fp": fp, "owner_link": link})
     );
     std::thread::spawn(move || {
         for line in std::io::stdin().lines().map_while(Result::ok) {

@@ -21,6 +21,21 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 png = "0.18.1"
 
+[features]
+# Test builds only: trust the published TEST key, take WILIVE_TEST_VERSION and
+# WILIVE_TEST_OWNER (tests/e2e update tests). tools/make_release.sh refuses such a binary.
+test-key = ["wilive-core/test-key"]
+
+[target.'cfg(any(target_os = "macos", windows))'.dependencies.ureq]
+version = "3.5.0"
+default-features = false
+features = ["native-tls-no-default"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
+ureq = { version = "3.5.0", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tray-icon = "0.24.2"
 tao = "0.37.1"

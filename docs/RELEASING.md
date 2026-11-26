@@ -33,8 +33,13 @@ in every version.
 4. `tools/make_release.sh X.Y.Z dist/raw` - checks every file (the version, the macOS
    signature, the Windows .exe needs no C runtime, ELF for each Linux CPU), signs the
    macOS app, writes SHA256SUMS, signs it and verifies the signature against the public key.
-5. `tools/make_release.sh X.Y.Z dist/raw --publish` (with `WILIVE_PRERELEASE=1` for a
-   pre-release) - tags and publishes.
+5. `tools/make_release.sh X.Y.Z dist/raw --publish` - tags and publishes. Publish as a
+   full release: GitHub's `releases/latest`, which the app's updater reads, skips
+   pre-releases (`WILIVE_PRERELEASE=1` makes one, for a build nobody should update to).
+   The script refuses any binary built with the feature `test-key` (it carries the marker
+   `wilive:test-key-build:never-ship`) or missing the release key.
+5b. Before publishing: `python3 tests/real_latency.py 12` with the new build installed
+   (a clock window on screen, the probe device allowed once) - real-screen latency, by hand.
 6. Download the release back and check it: `shasum -a 256 -c SHA256SUMS` and
    `openssl dgst -sha256 -verify release.pub.pem -signature SHA256SUMS.sig SHA256SUMS`.
 

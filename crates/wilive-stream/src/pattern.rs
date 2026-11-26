@@ -65,23 +65,29 @@ impl Pattern {
         self
     }
     fn draw_clock(&mut self, ms: u32) {
+        // Two rows: the time, and below it its bitwise inverse. The reader takes a
+        // frame only when they agree, so a block misread under compression is
+        // rejected, never counted (seen: one frame in 600 read 9 ms early).
         let b = CLOCK_BLOCK;
         let cells = CLOCK_BITS + 2;
-        if self.w < cells * b || self.h < b {
+        if self.w < cells * b || self.h < 2 * b {
             return;
         }
-        for c in 0..cells {
-            let on = match c {
-                0 => true,
-                c if c == cells - 1 => false,
-                c => (ms >> (CLOCK_BITS - c)) & 1 == 1,
-            };
-            let v = if on { 255 } else { 0 };
-            for y in 0..b {
-                let row = (y * self.w) as usize * 4;
-                for x in c * b..(c + 1) * b {
-                    let i = row + x as usize * 4;
-                    self.buf[i..i + 4].copy_from_slice(&[v, v, v, 255]);
+        for row in 0..2u32 {
+            let v = if row == 0 { ms } else { !ms };
+            for c in 0..cells {
+                let on = match c {
+                    0 => true,
+                    c if c == cells - 1 => false,
+                    c => (v >> (CLOCK_BITS - c)) & 1 == 1,
+                };
+                let px = if on { 255 } else { 0 };
+                for y in row * b..(row + 1) * b {
+                    let line = (y * self.w) as usize * 4;
+                    for x in c * b..(c + 1) * b {
+                        let i = line + x as usize * 4;
+                        self.buf[i..i + 4].copy_from_slice(&[px, px, px, 255]);
+                    }
                 }
             }
         }
@@ -223,7 +229,9 @@ impl FakeDisplays {
             Some(id) => l.iter().find(|d| d.id == id),
         }
         .ok_or("no such display")?;
-        let p = Pattern::new(d.width, d.height);
+        // As a real capture: the long edge fitted to this thread's edge (Auto or Sharp).
+        let (w, h) = crate::edge::fit(d.width, d.height, crate::edge::get());
+        let p = Pattern::new(w, h);
         let p = if busy { p.busy() } else { p };
         Ok(Box::new(if clock { p.clock() } else { p }))
     }
@@ -233,16 +241,24 @@ impl FakeDisplays {
 mod clock_tests {
     use super::*;
 
-    /// Reads the strip the way tests/latency's page does: the centre of each block.
+    /// Reads the strip the way tests/latency's page does: the centre of each block,
+    /// both rows, and only if the second is the first's inverse.
     fn read(f: &Frame) -> Option<u32> {
-        let px = |c: u32| {
-            let (x, y) = (c * CLOCK_BLOCK + CLOCK_BLOCK / 2, CLOCK_BLOCK / 2);
-            f.bgra[y as usize * f.stride + x as usize * 4] > 128
+        let row = |r: u32| {
+            let px = |c: u32| {
+                let (x, y) = (
+                    c * CLOCK_BLOCK + CLOCK_BLOCK / 2,
+                    r * CLOCK_BLOCK + CLOCK_BLOCK / 2,
+                );
+                f.bgra[y as usize * f.stride + x as usize * 4] > 128
+            };
+            if !px(0) || px(CLOCK_BITS + 1) {
+                return None;
+            }
+            Some((1..=CLOCK_BITS).fold(0u32, |v, c| (v << 1) | px(c) as u32))
         };
-        if !px(0) || px(CLOCK_BITS + 1) {
-            return None;
-        }
-        Some((1..=CLOCK_BITS).fold(0u32, |v, c| (v << 1) | px(c) as u32))
+        let (a, b) = (row(0)?, row(1)?);
+        (a == !b).then_some(a)
     }
 
     #[test]

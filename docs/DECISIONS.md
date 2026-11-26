@@ -83,3 +83,33 @@ anywhere from 22 to 39 ms). The gate now runs at 59 fps, sweeping every phase ea
 Honest figures (loopback, 4 runs): 1080p p50 19-20 ms, p99 27-28.5 ms. 720p: either
 p50 11-12 / p99 20 or p50 31-32 / p99 40-41 per run: some runs pay one extra compositor
 frame in headless Chrome. Open: find why (720p only, never 1080p).
+
+## D-08 Fast by default, full size on request (2026-11-26)
+
+Owner: "more granular control over what we are viewing", and lag first. Measured with
+tests/latency: 1080p p50 19-21 ms, p99 27-30 ms; a 3024x1964 screen sent whole p50
+35-58 ms at about 26 fps. So the capture is capped at 1920 on the long edge (Auto, the
+default), and a viewer who chooses **Sharp** gets the screen at its own size, up to 4K:
+that display's capture reopens at that size while anyone watching it wants Sharp. Smooth
+(at most half) and Saver (a quarter) cap the size for that viewer only.
+
+## D-09 Updates: signed, checked, installed only when the owner asks (2026-11-26)
+
+The app reads the latest release's SHA256SUMS and signature once a day; the signature is
+checked against the release key built into the app before anything is read; the file for
+this computer must match the signed list; on macOS the new app must also carry Wi-Live's
+own certificate. Only the owner's "Install and restart" installs (atomic swap, the old copy
+kept beside it until the next start). Releases are published as full releases, because
+GitHub's `releases/latest` skips pre-releases. Proven end to end on this Mac with the
+real signed v0.1.0 (tests/e2e/test_update_mac.py), including a tampered list and a
+corrupted download.
+
+## D-10 Real-screen latency is measured too (2026-11-26)
+
+tests/real_latency.py: a visible clock window, captured by the installed app, read
+back by a paired viewer. 1920x1246 at 56 fps: p50 52-72 ms, p99 69-82 ms across five
+runs. This includes the clock window's own paint and macOS's capture (about 30 ms more
+than the synthetic picture), which Wi-Live cannot remove; picking frames up the moment
+they arrive raised the frames delivered from 52 to 56 fps, with no change in median
+latency beyond noise. Not gated (it needs a screen, a window on top and an allowed
+viewer); run by hand before a release.

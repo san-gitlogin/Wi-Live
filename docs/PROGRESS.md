@@ -14,8 +14,8 @@ Newest first. Read REQUIREMENTS.md, DESIGN.md and DECISIONS.md before continuing
 | 5 | App: tray, owner window (web view), storage, start at login, single instance | done: installed and run on the owner's Mac; Windows VM (WebView2) |
 | 6 | Real capture: macOS (owner's Mac), Windows (DXGI + Media Foundation, VM), Linux (X11 + OpenH264, VM) | done 2026-11-26 |
 | 7 | Packaging and CI: signed macOS dmg, Windows exe, Linux x86_64 + ARM64; CI on all four | done 2026-11-26 |
-| 8 | Releases HID-Fi's way (own release key, own macOS certificate, signed SHA256SUMS) | done (tools/make_release.sh); in-app updates todo |
-| 9 | Trusted https (per-install name + real certificate); talk back (R-14) | todo |
+| 8 | Releases HID-Fi's way (own release key, own macOS certificate, signed SHA256SUMS); in-app updates | done 2026-11-26 (D-09) |
+| 9 | Trusted https; talk back | planned, needs the owner's DNS/Cloudflare accounts (docs/HTTPS.md) |
 
 ## Log
 
@@ -71,11 +71,18 @@ A legacy floor guard (Safari 12.1 / Chrome 70 / Firefox 68).
   bugs all caught), e2e 34 (pairing, ending, removing, pause, two viewers, displays and
   unplug, owner window, 15 server defences, 3 tampering cases), latency 2/2.
 
+## Log, later on 2026-11-26
+
+- Signing keys backed up to the Extreme SSD (AES-256 image, passphrase in the login
+  keychain as "Release keys backup (SSD)"; README beside it).
+- Updates (D-09), Linux tray + one-time owner link, Sharp at full size (D-08), iPhone
+  picture in picture with a fallback and a reason, frame pickup on arrival, Windows icon,
+  real-screen latency (D-10), probe made self-checking. Every tier passes; Linux VM passes.
+
 ## Next
 
-1. In-app updates checked against the release key (HID-Fi's updater, ported).
-2. Trusted https (a per-install name with a real certificate), then talk back (R-14).
-3. Linux tray (ksni, as HID-Fi); Windows app icon in the .exe.
-4. Clarity at native resolution (MAX_EDGE 1920 today) and real-capture latency on
-   screen (tests/real_latency.py finds its clock but must be made robust).
-5. 720p's occasional extra compositor frame in headless Chrome (D-07, corrected).
+1. Trusted https and talk back, once the owner gives the DNS/Cloudflare go-ahead
+   (docs/HTTPS.md).
+2. The Linux tray on a desktop with a tray host (KDE, or GNOME with its extension):
+   checked in a container without one so far.
+3. Windows self-update tested in the Windows VM (the macOS path is proven end to end).

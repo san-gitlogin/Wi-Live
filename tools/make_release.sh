@@ -32,7 +32,25 @@ if re.search(rb"(?i)vcruntime140|msvcp140|api-ms-win-crt-", d): bad.append("wind
 for name, machine in (("wilive-linux-x86_64", 62), ("wilive-linux-aarch64", 183)):
     e = pathlib.Path(name).read_bytes()
     if e[:4] != b"\x7fELF" or struct.unpack_from("<H", e, 18)[0] != machine: bad.append(f"{name}: not ELF for its CPU")
-print("checked: windows PE without C runtime, linux ELF x86_64 + aarch64")
+# No shipped binary may trust the published TEST update key (a test build).
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
+scalar = bytes(0x57 ^ ((i * 29) & 0xFF) for i in range(32))
+test_pub = ec.derive_private_key(int.from_bytes(scalar, "big"), ec.SECP256R1()).public_key().public_bytes(
+    serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint).hex().encode()
+import subprocess, tempfile, os
+blobs = {n: pathlib.Path(n).read_bytes() for n in ("wilive-windows-x86_64.exe", "wilive-linux-x86_64", "wilive-linux-aarch64")}
+m = tempfile.mkdtemp(); dmg = next(pathlib.Path(".").glob("Wi-Live-*-macos.dmg"))
+subprocess.run(["hdiutil", "attach", "-quiet", "-nobrowse", "-readonly", "-mountpoint", m, str(dmg)], check=True)
+try:
+    blobs["macOS app"] = pathlib.Path(m, "Wi-Live.app", "Contents", "MacOS", "wilive").read_bytes()
+finally:
+    subprocess.run(["hdiutil", "detach", "-quiet", m])
+release_key = b"0496d2da368e7422031cd01f0e70b4797e416800ce0f82d441ce2db16ea1e623e93eb34322abc16b51313e9fcdb18b3d74ce55edf1a4f0b74f7b30d1c359d2289c"
+for n, b in blobs.items():
+    if test_pub in b or b"wilive:test-key-build:never-ship" in b: bad.append(f"{n} trusts the TEST update key (a test build)")
+    if release_key not in b: bad.append(f"{n} does not carry the release key")
+print("checked: windows PE without C runtime, linux ELF x86_64 + aarch64, release key in every app, no TEST key")
 sys.exit("; ".join(bad) if bad else 0)
 PY
 chmod +x wilive-linux-*

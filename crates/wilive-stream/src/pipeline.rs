@@ -36,8 +36,45 @@ use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+/// Rings when a capture has a new frame, so the pipeline takes it at once instead of
+/// at its next tick (a frame arriving just after a tick waited up to one period).
+#[derive(Default)]
+pub struct Waker {
+    rung: Mutex<bool>,
+    cv: Condvar,
+}
+
+impl Waker {
+    pub fn ring(&self) {
+        *self.rung.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.cv.notify_all();
+    }
+    /// Waits until rung or `deadline`; true if rung (and clears it).
+    pub fn wait_until(&self, deadline: Instant) -> bool {
+        let mut r = self.rung.lock().unwrap_or_else(|e| e.into_inner());
+        while !*r {
+            let now = Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            r = self
+                .cv
+                .wait_timeout(r, deadline - now)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        *r = false;
+        true
+    }
+}
+
 /// What a screen grabber gives the pipeline.
 pub trait Source: Send {
+    /// A capture that knows when it has a new frame rings this (ScreenCaptureKit
+    /// does); one that does not leaves the pipeline on its timer.
+    fn waker(&self) -> Option<Arc<Waker>> {
+        None
+    }
     fn size(&self) -> (u32, u32);
     /// Calls `f` with the current picture if it changed since the last call,
     /// or if `force` is set, and returns whether `f` was called. An unchanged
@@ -590,6 +627,8 @@ fn full_cost(lanes: [Option<(u32, u32)>; TIERS], fps: u32, before: u32, secs: f6
 /// One display's capture.
 struct Capture {
     src: Box<dyn Source>,
+    /// The long edge it was opened with ([`crate::edge`]).
+    edge: u32,
     half_px: Vec<u8>,
     quarter_px: Vec<u8>,
     grabbed: u32,
@@ -599,6 +638,8 @@ struct Capture {
 /// What the loop needs to know about one viewer this turn.
 struct Seen {
     display: u32,
+    /// Chose Sharp: the display's capture at its own size.
+    sharp: bool,
     tier: usize,
     est: u32,
     need_key: bool,
@@ -719,6 +760,7 @@ fn run_display<S, E>(
                     .filter(|v| v.s.display.load(Ordering::Relaxed) == only)
                     .map(|v| Seen {
                         display: v.s.display.load(Ordering::Relaxed),
+                        sharp: v.s.quality.load(Ordering::Relaxed) == Quality::Sharp as u8,
                         tier: (v.s.tier.load(Ordering::Relaxed) as usize).min(TIERS - 1),
                         est: v.s.est.load(Ordering::Relaxed),
                         need_key: v.s.need_key.load(Ordering::Relaxed)
@@ -750,7 +792,17 @@ fn run_display<S, E>(
                 d
             };
             for d in displays {
+                // Sharp for anyone watching it: the capture at its own size; else fast.
+                let want_edge = if seen.iter().any(|v| v.display == d && v.sharp) {
+                    crate::edge::SHARP
+                } else {
+                    crate::edge::AUTO
+                };
+                if captures.get(&d).is_some_and(|c| c.edge != want_edge) {
+                    captures.remove(&d); // reopened at the other size below; encoders follow the size
+                }
                 if let std::collections::hash_map::Entry::Vacant(e) = captures.entry(d) {
+                    crate::edge::set(want_edge);
                     match make_source(if d == MAIN { None } else { Some(d) }) {
                         Ok(src) => {
                             if d == MAIN {
@@ -762,6 +814,7 @@ fn run_display<S, E>(
                             }
                             e.insert(Capture {
                                 src,
+                                edge: want_edge,
                                 half_px: Vec::new(),
                                 quarter_px: Vec::new(),
                                 grabbed: 0,
@@ -1058,7 +1111,16 @@ fn run_display<S, E>(
             next += period;
             let now = Instant::now();
             if next > now {
-                std::thread::sleep(next - now);
+                // A capture that rings: take its frame the moment it arrives (up to a
+                // period sooner, half a period on average); otherwise the timer.
+                match captures.values().find_map(|c| c.src.waker()) {
+                    Some(w) => {
+                        if w.wait_until(next) {
+                            next = Instant::now();
+                        }
+                    }
+                    None => std::thread::sleep(next - now),
+                }
             } else {
                 next = now; // fell behind: do not try to catch up with a burst
             }
@@ -1902,5 +1964,37 @@ mod rate_tests {
         );
         settle(&c, 5_000_000);
         assert_eq!(c.tier(), FULL, "a good link again: back to full size");
+    }
+}
+
+#[cfg(test)]
+mod waker_tests {
+    use super::*;
+
+    #[test]
+    fn a_ring_wakes_the_wait_at_once_and_silence_waits_to_the_deadline() {
+        let w = Arc::new(Waker::default());
+        let w2 = w.clone();
+        let t0 = Instant::now();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(30));
+            w2.ring();
+        });
+        assert!(w.wait_until(t0 + Duration::from_secs(2)), "rung");
+        assert!(
+            t0.elapsed() < Duration::from_millis(500),
+            "woken at the ring, not the deadline"
+        );
+        let t1 = Instant::now();
+        assert!(
+            !w.wait_until(t1 + Duration::from_millis(50)),
+            "nothing rang"
+        );
+        assert!(t1.elapsed() >= Duration::from_millis(50));
+        w.ring();
+        assert!(
+            w.wait_until(Instant::now()),
+            "a ring before the wait is not lost"
+        );
     }
 }

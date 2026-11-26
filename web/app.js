@@ -14,6 +14,9 @@
   const STANDALONE = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
   const $ = id => document.getElementById(id);
   const OWNER = typeof window.WILIVE_OWNER === 'string' ? window.WILIVE_OWNER : '';
+  // The owner's window in a browser (Linux): a one-time link set a session cookie and
+  // landed here on #owner. The cookie travels by itself; the page never sees it.
+  const OWNER_MODE = !!OWNER || location.hash === '#owner';
   const PROBE = /[?&]probe\b/.test(location.search);
   const DEV_KEY = 'wilive.device.v1';
   const T = window.__wl = { state: 'boot', lat: null, events: [] };   // read by the tests
@@ -288,6 +291,7 @@
     if (current != null) sel.value = String(current);
     const d = list.find(x => x.id === current) || list[0];
     T.srcW = d && d.width ? d.width : 0;
+    T.srcH = d && d.height ? d.height : 0;
     sel.hidden = list.length < 2 || wallOn;
     $('btnWall').hidden = list.length < 2;
   }
@@ -338,19 +342,27 @@
     const video = $('video');
     if (!video.requestVideoFrameCallback) return;
     const BITS = 32, BLOCK = 16, cv = document.createElement('canvas');
-    cv.width = (BITS + 2) * BLOCK; cv.height = BLOCK;
+    cv.width = (BITS + 2) * BLOCK; cv.height = 2 * BLOCK;
     const cx = cv.getContext('2d', { willReadFrequently: true });
     const samples = [], parts = [];
-    let bad = 0;
+    let bad = 0, ahead = 0;
     const onFrame = (now, meta) => {
-      // The strip is drawn at the display's size; the stream may be smaller.
-      const sx = T.srcW ? meta.width / T.srcW : 1;
+      // The strip is drawn at the capture's size: the display's, its long edge capped
+      // at 1920 (Auto) or 3840 (Sharp), as the app fits it (wilive-stream edge::fit).
+      // The stream may be that, or half or a quarter of it: meta.width says which.
       try {
-        cx.drawImage(video, 0, 0, cv.width * sx, BLOCK * sx, 0, 0, cv.width, BLOCK);
-        const px = cx.getImageData(0, 0, cv.width, BLOCK).data;
-        const at = c => px[((BLOCK >> 1) * cv.width + c * BLOCK + (BLOCK >> 1)) * 4] > 128;
-        if (at(0) && !at(BITS + 1)) {
-          let v = 0; for (let c = 1; c <= BITS; c++) v = (v * 2) + (at(c) ? 1 : 0);
+        const edge = quality() === 'sharp' ? 3840 : 1920;
+        const long = Math.max(T.srcW || 0, T.srcH || 0);
+        const capW = long > edge ? (Math.round((T.srcW || meta.width) * edge / long) & ~1) : (T.srcW || meta.width);
+        const sx = meta.width / capW;
+        cx.drawImage(video, 0, 0, cv.width * sx, 2 * BLOCK * sx, 0, 0, cv.width, 2 * BLOCK);
+        const px = cx.getImageData(0, 0, cv.width, 2 * BLOCK).data;
+        const bit = (r, c) => px[((r * BLOCK + (BLOCK >> 1)) * cv.width + c * BLOCK + (BLOCK >> 1)) * 4] > 128;
+        const word = r => { if (!bit(r, 0) || bit(r, BITS + 1)) return null; let v = 0; for (let c = 1; c <= BITS; c++) v = v * 2 + (bit(r, c) ? 1 : 0); return v; };
+        // The second row is the first's inverse: a frame counts only when they agree.
+        const w0 = word(0), w1 = word(1);
+        if (w0 !== null && w1 !== null && w0 + w1 === 4294967295) {
+          const v = w0;
           // The wall clock now, moved to the frame's display time. Not timeOrigin +
           // expectedDisplayTime: timeOrigin drifts from the wall clock while a page
           // stays open (seen: frames "shown" 4 ms before they arrived).
@@ -360,7 +372,10 @@
           const decoded = meta.receiveTime ? meta.receiveTime + (meta.processingDuration || 0) * 1000 : 0;
           const shown = (wallNow + (Math.max(meta.expectedDisplayTime, decoded) - perfNow)) % 4294967296;
           let d = shown - v; if (d < -2147483648) d += 4294967296;
-          if (d > -50 && d < 10000) {
+          // Negative: drawImage already held the next frame, newer than the one this
+          // callback's timings describe (about 1 in 600). Set aside and counted.
+          if (d < 0 && d > -50) { ahead++; }
+          else if (d >= 0 && d < 10000) {
             samples.push(d);
             // Where the time went: to the last packet arriving, decoding, then display.
             if (meta.receiveTime) {
@@ -376,7 +391,7 @@
       video.requestVideoFrameCallback(onFrame);
     };
     video.requestVideoFrameCallback(onFrame);
-    T.probe = { samples, parts, bad: () => bad, reset() { samples.length = 0; parts.length = 0; bad = 0; } };
+    T.probe = { samples, parts, bad: () => bad, ahead: () => ahead, reset() { samples.length = 0; parts.length = 0; bad = 0; ahead = 0; } };
     setInterval(() => {
       if (samples.length < 10) return;
       const s = samples.slice().sort((a, b) => a - b), q = p => Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]);
@@ -581,11 +596,41 @@
   }
 
   // ----- more: picture-in-picture, snapshot, stats, shortcuts -----
+  // Picture in picture. iOS Safari takes its own API for a live stream (the standard
+  // one can refuse a MediaStream there); the camera's mini browser may allow neither.
+  // Whatever happens, the person is told: a button that does nothing is the bug.
+  function inPip(v) { return document.pictureInPictureElement === v || v.webkitPresentationMode === 'picture-in-picture'; }
   function pip() {
     const v = wallOn && wall[0] ? wall[0].video : $('video');
-    if (document.pictureInPictureElement) return document.exitPictureInPicture().catch(() => {});
-    if (v.requestPictureInPicture) return v.requestPictureInPicture().catch(() => {});
-    if (v.webkitSetPresentationMode) v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+    if (inPip(v)) {
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+      else if (v.webkitSetPresentationMode) v.webkitSetPresentationMode('inline');
+      return;
+    }
+    const failed = () => toast(IOS && !STANDALONE
+      ? 'Picture in picture is not available in this view. Open this page in Safari, or add it to your Home Screen.'
+      : 'Picture in picture is not available in this browser.');
+    const viaWebkit = () => {
+      if (v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')) {
+        try { v.webkitSetPresentationMode('picture-in-picture'); } catch (e) { return failed(); }
+        setTimeout(() => { if (!inPip(v)) failed(); }, 1200);
+        return true;
+      }
+      return false;
+    };
+    keepPlaying(v);
+    if (IOS && viaWebkit()) return;
+    if (v.requestPictureInPicture && document.pictureInPictureEnabled !== false) {
+      v.requestPictureInPicture().catch(() => { if (!viaWebkit()) failed(); });
+      return;
+    }
+    if (!viaWebkit()) failed();
+  }
+  let toastTimer = 0;
+  function toast(t) {
+    const e = $('toast');
+    e.textContent = t; e.hidden = false; T.toast = t;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { e.hidden = true; }, 5000);
   }
   function snapshot() {
     const v = wallOn && wall[0] ? wall[0].video : $('video');
@@ -648,7 +693,8 @@
     $('btnHomeClose').addEventListener('click', () => { $('homeSheet').hidden = true; });
     $('btnAgain').addEventListener('click', () => { retry = 0; watch(); });
     $('displaySel').addEventListener('change', e => { T.wantDisplay = Number(e.target.value); main && main.send({ t: 'display', id: T.wantDisplay }); setZoom(1); });
-    if (!document.pictureInPictureEnabled && !('webkitSetPresentationMode' in HTMLVideoElement.prototype)) $('mPip').hidden = true;
+    // Offered where the browser has either API; when it still refuses, pip() says why.
+    if (!('pictureInPictureEnabled' in document) && !('webkitSetPresentationMode' in HTMLVideoElement.prototype)) $('mPip').hidden = true;
     // Keyboard: every control has a key (the sheet lists them).
     document.addEventListener('keydown', e => {
       if ($('vWatch').hidden || e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -736,7 +782,21 @@
     // permission and switches (only the app has them; the test server has none)
     $('oPerm').hidden = s.capture_allowed !== false;
     const sw = Object.entries(s.switches || {});
-    $('oThis').hidden = !sw.length;
+    $('oThis').hidden = !sw.length && !s.update;
+    // Updates (only the app has them): what is new, and the owner's tap installs it.
+    const u = s.update;
+    $('oUpdate').hidden = !u;
+    if (u) {
+      const words = { unknown: 'Wi-Live ' + u.current, checking: 'Checking for a new version...', up_to_date: 'Wi-Live ' + u.current + ' is the newest',
+        available: 'Wi-Live ' + u.detail + ' is ready to install (you have ' + u.current + ')', installing: 'Installing... ' + (u.detail || 0) + '%',
+        failed: String(u.detail || 'The last check did not work') };
+      $('oUpdateTx').textContent = words[u.state] || '';
+      const b = $('oUpdateBtn');
+      b.textContent = u.state === 'available' ? 'Install and restart' : 'Check now';
+      b.className = 'btn small' + (u.state === 'available' ? ' primary' : '');
+      b.disabled = u.state === 'checking' || u.state === 'installing';
+      b.dataset.act = u.state === 'available' ? 'install' : 'check';
+    }
     const SW = { sound: ['Share this computer\'s sound', 'Viewers hear what this computer plays.'], mic: ['Share the microphone', 'Viewers hear this computer\'s microphone.'], start_at_login: ['Start at login', 'Wi-Live is ready whenever this computer is.'] };
     if (changed('sw', sw)) $('oSwitches').replaceChildren(...sw.filter(([k]) => SW[k]).map(([k, on]) => el('li', { class: 'item' },
       el('div', { class: 'grow' }, el('div', { class: 'title', text: SW[k][0] }), el('div', { class: 'sub', text: SW[k][1] })),
@@ -763,21 +823,22 @@
   async function refresh() {
     if (ownerBusy) return;
     ownerBusy = true;
-    try { render(await api('/api/owner/state')); note('owner'); }
-    catch (e) { note('owner-error:' + e.message); }
+    try { render(await api('/api/owner/state')); note('owner'); $('oDenied').hidden = true; }
+    catch (e) { note('owner-error:' + e.message); if (e.status === 403) $('oDenied').hidden = false; }
     finally { ownerBusy = false; }
   }
   function owner() {
     show('vOwner');
     $('oPause').addEventListener('click', () => act('/api/owner/pause', { on: $('oPause').getAttribute('aria-checked') === 'true' }));
     $('oPermBtn').addEventListener('click', () => act('/api/owner/capture', {}));
+    $('oUpdateBtn').addEventListener('click', () => act('/api/owner/update', { act: $('oUpdateBtn').dataset.act }));
     refresh();
     setInterval(refresh, 1000);
   }
 
   // ================= boot =================
   async function boot() {
-    if (OWNER) return owner();
+    if (OWNER_MODE) return owner();
     $('btnAsk').addEventListener('click', ask);
     $('devName').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
     $('btnCancel').addEventListener('click', () => { if (pairing) pairing.alive = false; startPairUI(); });

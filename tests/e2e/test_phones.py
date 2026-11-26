@@ -80,3 +80,61 @@ def test_the_phone_is_remembered_and_goes_straight_to_the_picture(chrome, iphone
     v2.goto(server.base + "/")
     wait(v2, "window.__wl.state === 'live'", 20)
     assert "pair" not in v2.evaluate("window.__wl.events")
+
+
+def test_picture_in_picture_never_fails_silently_on_an_iphone(chrome, iphone, server):
+    """Owner, 2026-11-26: picture in picture did nothing in the page the camera opened.
+    Whatever the browser allows, the person sees it work or is told why."""
+    o = owner_page(chrome, server)
+    v = iphone.new_page()
+    v.goto(server.base + "/")
+    pair(o, v, "iPhone")
+    # 1. a view that allows neither API (the camera's mini browser): told what to do
+    v.evaluate("""() => { const p = HTMLVideoElement.prototype; delete p.webkitSupportsPresentationMode;
+        document.getElementById('video').webkitSupportsPresentationMode = undefined;
+        document.getElementById('video').requestPictureInPicture = () => Promise.reject(new Error('no')); }""")
+    v.locator("#btnMore").tap()
+    v.locator("#mPip").tap()
+    v.wait_for_selector("#toast:not([hidden])", timeout=4000)
+    assert "Safari" in v.text_content("#toast") and "Home Screen" in v.text_content("#toast")
+    # 2. iOS's own API available: it is used, and no error is shown
+    v.evaluate("""() => { const vid = document.getElementById('video'); document.getElementById('toast').hidden = true;
+        vid.webkitSupportsPresentationMode = m => m === 'picture-in-picture';
+        vid.webkitSetPresentationMode = m => { vid._mode = m; };
+        Object.defineProperty(vid, 'webkitPresentationMode', { get: () => vid._mode || 'inline', configurable: true }); }""")
+    v.locator("#btnMore").tap()
+    v.locator("#mPip").tap()
+    v.wait_for_timeout(1500)
+    assert v.evaluate("document.getElementById('video').webkitPresentationMode") == "picture-in-picture"
+    assert v.is_hidden("#toast"), "no false error once it is in picture in picture"
+    assert v.evaluate("document.getElementById('video').paused") is False
+
+
+def test_a_refused_standard_request_falls_back_to_the_webkit_api(chrome, server):
+    o = owner_page(chrome, server)
+    from support.pages import viewer_page
+    v = viewer_page(chrome, server)
+    pair(o, v)
+    v.evaluate("""() => { const vid = document.getElementById('video');
+        vid.requestPictureInPicture = () => Promise.reject(new Error('MediaStream not supported'));
+        vid.webkitSupportsPresentationMode = m => m === 'picture-in-picture';
+        vid.webkitSetPresentationMode = m => { vid._mode = m; };
+        Object.defineProperty(vid, 'webkitPresentationMode', { get: () => vid._mode || 'inline', configurable: true }); }""")
+    v.click("#btnMore")
+    v.click("#mPip")
+    v.wait_for_timeout(1500)
+    assert v.evaluate("document.getElementById('video').webkitPresentationMode") == "picture-in-picture"
+    assert v.is_hidden("#toast")
+
+
+def test_in_chrome_picture_in_picture_works_or_says_why(chrome, server):
+    o = owner_page(chrome, server)
+    from support.pages import viewer_page
+    v = viewer_page(chrome, server)
+    pair(o, v)
+    v.click("#btnMore")
+    v.click("#mPip")
+    v.wait_for_timeout(1500)
+    entered = v.evaluate("document.pictureInPictureElement === document.getElementById('video')")
+    told = v.is_visible("#toast")
+    assert entered or told, "picture in picture neither started nor explained"

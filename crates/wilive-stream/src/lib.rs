@@ -9,6 +9,48 @@ pub fn epoch() -> std::time::Instant {
     *E.get_or_init(std::time::Instant::now)
 }
 
+/// How large a capture may be: [`edge::AUTO`] (1920 on the long edge, the fast
+/// default) or [`edge::SHARP`] (3840: a Retina or 4K screen at its own size) while a
+/// viewer of that display chose Sharp. The pipeline sets it on the capturing thread
+/// (one per display) just before it opens a source, and the sources read it there.
+/// Measured 2026-11-26 (tests/latency): 1080p p50 21 ms; a 3024x1964 test picture
+/// p50 56 ms at 25 fps. Fast by default; full size when the viewer asks for it.
+pub mod edge {
+    use std::cell::Cell;
+    pub const AUTO: u32 = 1920;
+    pub const SHARP: u32 = 3840;
+    thread_local! { static EDGE: Cell<u32> = const { Cell::new(AUTO) }; }
+    pub fn set(v: u32) {
+        EDGE.with(|e| e.set(v));
+    }
+    pub fn get() -> u32 {
+        EDGE.with(|e| e.get())
+    }
+    /// The size for a display of `w`x`h`: the same aspect, the long edge at most
+    /// `edge`, even numbers (H.264), never below 16.
+    pub fn fit(w: u32, h: u32, edge: u32) -> (u32, u32) {
+        let (w, h) = (w.max(2), h.max(2));
+        let long = w.max(h);
+        let scale = if long > edge {
+            edge as f64 / long as f64
+        } else {
+            1.0
+        };
+        let ew = ((w as f64 * scale).round() as u32).max(16) & !1;
+        let eh = ((h as f64 * scale).round() as u32).max(16) & !1;
+        (ew, eh)
+    }
+    /// Desktop Duplication and X11 halve a wide screen rather than scale it: above
+    /// 2560 wide normally, above 3840 when Sharp.
+    pub fn halve_above() -> usize {
+        if get() >= SHARP {
+            3840
+        } else {
+            2560
+        }
+    }
+}
+
 pub mod convert;
 pub mod display;
 #[cfg(windows)]

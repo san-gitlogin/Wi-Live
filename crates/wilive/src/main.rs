@@ -7,13 +7,13 @@
 mod autostart;
 #[cfg(any(target_os = "macos", windows))]
 mod desktop;
-// The tray's pieces; Linux has no tray yet (docs/PROGRESS.md "Next").
-#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 mod icons;
+#[cfg(target_os = "linux")]
+mod linux;
 mod logfile;
-#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 mod model;
 mod store;
+mod updater;
 
 use std::sync::{Arc, Mutex};
 use store::{FilePersist, Settings, Store};
@@ -25,6 +25,7 @@ pub const FPS: u32 = 60;
 
 /// The app's switches and permissions, for the owner's window.
 struct AppHost {
+    updater: Arc<updater::Updater>,
     store: Store,
     settings: Mutex<Settings>,
     audio: Arc<wilive_stream::audio::Settings>,
@@ -50,6 +51,23 @@ impl Host for AppHost {
         #[cfg(target_os = "macos")]
         {
             let _ = wilive_stream::sck::ask();
+        }
+    }
+    fn update(&self) -> serde_json::Value {
+        self.updater.view()
+    }
+    fn update_action(&self, act: &str) -> bool {
+        match act {
+            "check" => {
+                let u = self.updater.clone();
+                std::thread::spawn(move || u.check());
+                true
+            }
+            "install" => {
+                self.updater.install();
+                true
+            }
+            _ => false,
         }
     }
     fn switches(&self) -> Vec<(&'static str, bool)> {
@@ -113,15 +131,37 @@ fn main() {
         .truncate(false)
         .write(true)
         .open(store.dir().join("instance.lock"));
+    // Started by an update: the old copy is on its way out; wait for its lock.
+    let after_update = std::env::args().any(|a| a == "--after-update");
     let _lock = match lock {
         Ok(f) if f.try_lock().is_ok() => f,
+        Ok(f) if after_update => {
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            loop {
+                if f.try_lock().is_ok() {
+                    break f;
+                }
+                if std::time::Instant::now() > end {
+                    log::warn!("the copy before the update did not leave within 20 s");
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
         _ => {
             let _ = std::fs::write(store.dir().join("show.request"), b"1");
             log::info!("already running - asked it to show its window");
             return;
         }
     };
-    log::info!("starting, version {}", env!("CARGO_PKG_VERSION"));
+    log::info!(
+        "starting, version {}{}",
+        env!("CARGO_PKG_VERSION"),
+        if after_update { " (just updated)" } else { "" }
+    );
+    updater::clean_old();
+    let updater = updater::Updater::new();
+    updater.watch();
     std::panic::set_hook(Box::new(|p| log::error!("panic: {p}")));
 
     let settings = store.settings();
@@ -149,8 +189,15 @@ fn main() {
     let name = computer_name();
     // A fresh owner token each run, held in memory only: the window gets it, and
     // nothing on disk can be stolen to drive the owner's controls.
-    let token = wilive_core::pair::random_hex(24);
+    #[allow(unused_mut)]
+    let mut token = wilive_core::pair::random_hex(24);
+    // Test builds only: the e2e update test drives the owner's controls.
+    #[cfg(feature = "test-key")]
+    if let Ok(t) = std::env::var("WILIVE_TEST_OWNER") {
+        token = t;
+    }
     let host = AppHost {
+        updater,
         store: Store::open(store.dir().to_path_buf()).expect("same folder"),
         settings: Mutex::new(settings.clone()),
         audio: audio_settings,
@@ -202,14 +249,11 @@ fn main() {
 
     #[cfg(any(target_os = "macos", windows))]
     desktop::run(server, token, store, first_run);
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    linux::run(server, store, first_run);
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
-        // Linux: the tray comes later (docs/PROGRESS.md); the server runs and the
-        // owner opens the address printed here.
         let _ = (token, first_run);
-        for u in wilive_server::lan_addrs() {
-            println!("Wi-Live: open http://{u}:{}/ on a device", server.port);
-        }
         loop {
             std::thread::park();
         }

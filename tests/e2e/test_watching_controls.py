@@ -177,3 +177,22 @@ def test_the_picture_choice_changes_what_arrives_and_is_remembered(chrome, serve
     wait(v, "window.__wl.state === 'live'")
     v.wait_for_function("() => document.getElementById('video').videoWidth === 320", timeout=15000)
     assert v.get_attribute("#qualitySeg [data-q=saver]", "aria-checked") == "true", "kept on this device"
+
+
+def test_sharp_sends_a_retina_screen_at_its_own_size_and_auto_stays_fast(chrome, make_server):
+    """Auto caps the capture at 1920 on the long edge (the fast default, D-07 figures);
+    Sharp reopens it at the screen's own size, up to 4K."""
+    s = make_server("3024", "1964", "30")
+    o, v = owner_page(chrome, s), viewer_page(chrome, s)
+    pair(o, v)
+    width = "() => document.getElementById('video').videoWidth"
+    v.wait_for_function(f"() => ({width})() === 1920 || ({width})() === 960", timeout=15000)
+    def choose(q):
+        v.click("#btnMore")
+        v.click(f"#qualitySeg [data-q={q}]")
+        v.keyboard.press("Escape")
+    choose("sharp")
+    v.wait_for_function(f"() => ({width})() === 3024", timeout=20000)
+    assert v.evaluate("document.getElementById('video').videoHeight") == 1964
+    choose("auto")
+    v.wait_for_function(f"() => ({width})() <= 1920", timeout=20000)

@@ -6,7 +6,7 @@
 //!   ARGB) and position, and it is drawn back in on a copy.
 //! - The layout of X's pixels is checked, not assumed (32 bits per pixel,
 //!   little-endian), with a clear error otherwise.
-//! - Wider than 2560 pixels, the picture is halved.
+//! - Wider than 2560 pixels the picture is halved (3840 when a viewer chose Sharp).
 //! - Several monitors are one X screen; RandR says where each one is, and a
 //!   monitor is captured as its part of the screen.
 //! - Wayland: X11 capture would read only XWayland's own windows (a mostly
@@ -25,7 +25,10 @@ use x11rb::protocol::xproto::{ConnectionExt as _, ImageFormat, ImageOrder, Windo
 use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
-pub const HALVE_ABOVE: usize = 2560;
+/// Wider than this, the picture is halved: see [`crate::edge::halve_above`].
+pub fn halve_above() -> usize {
+    crate::edge::halve_above()
+}
 
 /// True when the desktop session is Wayland (where X11 capture would be blank).
 pub fn on_wayland() -> bool {
@@ -281,7 +284,7 @@ impl X11Source {
 
 impl Source for X11Source {
     fn size(&self) -> (u32, u32) {
-        if self.w > HALVE_ABOVE {
+        if self.w > halve_above() {
             ((self.w / 2) as u32, (self.h / 2) as u32)
         } else {
             (self.w as u32, self.h as u32)
@@ -312,7 +315,7 @@ impl Source for X11Source {
             };
             draw_pointer(&mut self.comp, self.w * 4, self.w, self.h, &p, x, y);
         }
-        if self.w > HALVE_ABOVE {
+        if self.w > halve_above() {
             let comp = std::mem::take(&mut self.comp);
             let (nw, nh) = halve_bgra(&comp, self.w * 4, self.w, self.h, &mut self.half);
             self.comp = comp;

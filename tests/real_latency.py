@@ -60,7 +60,7 @@ with sync_playwright() as p:
           x = e;
         }
       }
-      if (!found) return {error: 'clock not on the captured screen (covered?)', W, H, frame: cv.toDataURL('image/jpeg', 0.7)};
+      if (!found) return {error: 'clock not on the captured screen (covered?)', W, H, frame: cv.toDataURL('image/png')};
       const x0 = found.x0, B = found.B, cy = found.y + Math.floor(B / 3), y0 = found.y;
       const samples = [], parts = []; let bad = 0;
       const sc = document.createElement('canvas'); sc.width = Math.ceil(B * 34); sc.height = 1;
@@ -85,7 +85,7 @@ with sync_playwright() as p:
 
 if r.get("frame"):
     import base64
-    (OUT / "real_latency_frame.jpg").write_bytes(base64.b64decode(r.pop("frame").split(",", 1)[1]))
+    (OUT / "real_latency_frame.png").write_bytes(base64.b64decode(r.pop("frame").split(",", 1)[1]))
 if "error" in r or not r["samples"]:
     r.setdefault("error", f"no readable frames ({r.get('bad')} unreadable)")
     status(phase="failed", **r); print(r); sys.exit(1)

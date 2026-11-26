@@ -33,6 +33,14 @@ pub trait Host: Send + Sync {
     fn set_switch(&self, _name: &str, _on: bool) -> bool {
         false
     }
+    /// Updates of the app itself: `{state, detail, current}` (null: this host has none).
+    fn update(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+    /// "check" or "install"; false if this host cannot.
+    fn update_action(&self, _act: &str) -> bool {
+        false
+    }
 }
 
 pub struct NoHost;
@@ -101,6 +109,11 @@ pub struct State {
     persist: Box<dyn Persist>,
     pub host: Box<dyn Host>,
     pub health: crate::health::Health,
+    /// One-time links that open the owner's window in a browser (Linux has no web view
+    /// of its own): code -> when made (ms). Swapped for a session cookie once.
+    owner_codes: Mutex<Vec<(String, u64)>>,
+    /// Owner sessions those links started (cookie values), in memory only.
+    owner_sessions: Mutex<Vec<String>>,
     started: Instant,
     seq: AtomicU64,
 }
@@ -124,6 +137,8 @@ impl State {
             persist,
             host: Box::new(NoHost),
             health: Default::default(),
+            owner_codes: Mutex::default(),
+            owner_sessions: Mutex::default(),
             started: Instant::now(),
             seq: AtomicU64::new(1),
         }
@@ -132,6 +147,40 @@ impl State {
     pub fn with_host(mut self, host: Box<dyn Host>) -> Self {
         self.host = host;
         self
+    }
+
+    /// A one-time link to the owner's window: `/owner?code=...`, good once, for 60 s.
+    pub fn owner_link(&self) -> String {
+        let code = wilive_core::pair::random_hex(16);
+        let now = self.ms();
+        let mut c = lock(&self.owner_codes);
+        c.retain(|(_, at)| now.saturating_sub(*at) < 60_000);
+        if c.len() >= 4 {
+            c.remove(0);
+        }
+        c.push((code.clone(), now));
+        format!("/owner?code={code}")
+    }
+
+    /// Swaps a link's code for a session (once); None if unknown, used or expired.
+    pub fn owner_login(&self, code: &str) -> Option<String> {
+        let now = self.ms();
+        let mut c = lock(&self.owner_codes);
+        let i = c
+            .iter()
+            .position(|(k, at)| k == code && now.saturating_sub(*at) < 60_000)?;
+        c.remove(i);
+        let sid = wilive_core::pair::random_hex(32);
+        let mut s = lock(&self.owner_sessions);
+        if s.len() >= 8 {
+            s.remove(0);
+        }
+        s.push(sid.clone());
+        Some(sid)
+    }
+
+    pub fn owner_session_ok(&self, sid: &str) -> bool {
+        sid.len() == 64 && lock(&self.owner_sessions).iter().any(|s| s == sid)
     }
 
     /// Milliseconds since start: the pairing table's clock.

@@ -121,17 +121,55 @@ struct On {
     on: bool,
 }
 #[derive(Deserialize)]
+struct Act {
+    act: String,
+}
+#[derive(Deserialize)]
 struct Switch {
     name: String,
     on: bool,
 }
 
-/// Whether this request comes from the owner's window.
+/// The owner session cookie's value, if the request carries one.
+pub fn owner_cookie(req: &Request) -> Option<&str> {
+    req.header("cookie")?
+        .split(';')
+        .map(str::trim)
+        .find_map(|c| c.strip_prefix("wl_owner="))
+}
+
+/// Whether this request comes from the owner's window: this computer (loopback), with
+/// the window's token or a session a one-time link started.
 pub fn is_owner(st: &State, req: &Request, peer: IpAddr) -> bool {
     peer.is_loopback()
-        && req
+        && (req
             .header("x-wilive-owner")
             .is_some_and(|t| ct_eq(t, &st.owner_token))
+            || owner_cookie(req).is_some_and(|c| st.owner_session_ok(c)))
+}
+
+/// `GET /owner?code=...` (loopback only): a one-time link becomes an owner session
+/// (an HttpOnly, SameSite=Strict cookie), then the dashboard in owner mode.
+pub fn owner_login(st: &State, req: &Request, peer: IpAddr) -> Response {
+    let code = req.query.get("code").map(String::as_str).unwrap_or("");
+    match (peer.is_loopback(), st.owner_login(code)) {
+        (true, Some(sid)) => Response {
+            status: 302,
+            ctype: "text/plain",
+            body: Vec::new(),
+            headers: vec![
+                ("Location", "/#owner".to_string()),
+                ("Set-Cookie", format!("wl_owner={sid}; HttpOnly; SameSite=Strict; Path=/")),
+                ("Cache-Control", "no-store".to_string()),
+            ],
+        },
+        _ => Response {
+            status: 403,
+            ctype: "text/plain; charset=utf-8",
+            body: b"This link has been used or has expired. Open Wi-Live again from its icon on this computer.".to_vec(),
+            headers: vec![("Cache-Control", "no-store".to_string())],
+        },
+    }
 }
 
 /// Routes `/api/...`. `None`: not an API path.
@@ -258,6 +296,7 @@ pub fn owner_state(st: &State, urls: &[String]) -> serde_json::Value {
         "log": lock(&st.log).recent(100),
         "capture_allowed": st.host.capture_allowed(),
         "app": st.health.now(),
+        "update": st.host.update(),
         "log_total": lock(&st.log).len(),
         "log_cap": wilive_core::log::CAP,
         "switches": st.host.switches().into_iter().map(|(k, v)| (k.to_string(), serde_json::Value::Bool(v))).collect::<serde_json::Map<_, _>>(),
@@ -367,6 +406,16 @@ fn owner(st: &State, req: &Request, urls: &[String]) -> Response {
         }
         ("POST", "/api/owner/capture") => {
             st.host.ask_capture();
+            ok()
+        }
+        ("POST", "/api/owner/update") => {
+            let b: Act = match body(req) {
+                Ok(b) => b,
+                Err(r) => return r,
+            };
+            if !st.host.update_action(&b.act) {
+                return refuse(Refuse::Unknown);
+            }
             ok()
         }
         ("POST", "/api/owner/switch") => {
