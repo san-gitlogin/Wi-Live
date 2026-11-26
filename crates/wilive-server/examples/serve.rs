@@ -10,6 +10,7 @@
 //! WILIVE_SOUND=test|real  a test tone (clicks each second) or the real sound
 //! WILIVE_PORT=p       exactly this port
 //! WILIVE_DEMO_IMAGE=a.png  a still picture as the screen (README screenshots; never a real screen)
+//! WILIVE_DEMO_FRAMES=dirA,dirB  a made-up screen per display, played from f00000.png... in a loop (films)
 //! WILIVE_HOME=dir     keep devices and the log in dir across restarts (as the app does)
 //! WILIVE_FILL_LOG=n   start with n made-up log events; WILIVE_FILL_DEVICES=n with n devices
 //! stdin: "still" / "move" (freeze the pattern), "unplug <id>" (take a display away)
@@ -25,27 +26,84 @@ struct Still {
     h: u32,
     bgra: Vec<u8>,
 }
+/// A PNG as the encoder's BGRA, its size rounded down to even.
+fn decode(path: &std::path::Path) -> (u32, u32, Vec<u8>) {
+    let dec = png::Decoder::new(std::io::BufReader::new(
+        std::fs::File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+    ));
+    let mut r = dec.read_info().expect("a PNG");
+    let mut buf = vec![0; r.output_buffer_size().expect("size")];
+    let info = r.next_frame(&mut buf).expect("a PNG frame");
+    let (w, h) = (info.width & !1, info.height & !1);
+    let ch = info.color_type.samples();
+    let mut bgra = vec![255u8; (w * h * 4) as usize];
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            let s = (y * info.width as usize + x) * ch;
+            let d = (y * w as usize + x) * 4;
+            bgra[d] = buf[s + 2];
+            bgra[d + 1] = buf[s + 1];
+            bgra[d + 2] = buf[s];
+        }
+    }
+    (w, h, bgra)
+}
 impl Still {
     fn open(path: &str) -> Still {
-        let dec = png::Decoder::new(std::io::BufReader::new(
-            std::fs::File::open(path).expect("WILIVE_DEMO_IMAGE"),
-        ));
-        let mut r = dec.read_info().expect("a PNG");
-        let mut buf = vec![0; r.output_buffer_size().expect("size")];
-        let info = r.next_frame(&mut buf).expect("a PNG frame");
-        let (w, h) = (info.width & !1, info.height & !1);
-        let ch = info.color_type.samples();
-        let mut bgra = vec![255u8; (w * h * 4) as usize];
-        for y in 0..h as usize {
-            for x in 0..w as usize {
-                let s = (y * info.width as usize + x) * ch;
-                let d = (y * w as usize + x) * 4;
-                bgra[d] = buf[s + 2];
-                bgra[d + 1] = buf[s + 1];
-                bgra[d + 2] = buf[s];
-            }
-        }
+        let (w, h, bgra) = decode(std::path::Path::new(path));
         Still { w, h, bgra }
+    }
+}
+
+/// A made-up screen that moves (WILIVE_DEMO_FRAMES): numbered PNGs played one per
+/// grab, in a loop, read from disk one at a time so a long sequence costs no memory.
+struct Frames {
+    files: Vec<std::path::PathBuf>,
+    at: usize,
+    w: u32,
+    h: u32,
+    bgra: Vec<u8>,
+}
+impl Frames {
+    fn open(dir: &str) -> Frames {
+        let mut files: Vec<_> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("WILIVE_DEMO_FRAMES {dir}: {e}"))
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "png"))
+            .collect();
+        files.sort();
+        assert!(!files.is_empty(), "no PNG frames in {dir}");
+        let (w, h, bgra) = decode(&files[0]);
+        Frames {
+            files,
+            at: 0,
+            w,
+            h,
+            bgra,
+        }
+    }
+}
+impl Source for Frames {
+    fn size(&self) -> (u32, u32) {
+        (self.w, self.h)
+    }
+    fn grab(
+        &mut self,
+        _force: bool,
+        f: &mut dyn FnMut(&wilive_stream::frame::Frame),
+    ) -> Result<bool, String> {
+        let (w, h, bgra) = decode(&self.files[self.at]);
+        if (w, h) == (self.w, self.h) {
+            self.bgra = bgra;
+        }
+        self.at = (self.at + 1) % self.files.len();
+        f(&wilive_stream::frame::Frame {
+            width: self.w,
+            height: self.h,
+            stride: (self.w * 4) as usize,
+            bgra: &self.bgra,
+        });
+        Ok(true)
     }
 }
 impl Source for Still {
@@ -143,7 +201,11 @@ fn main() {
             if let Ok(why) = std::env::var("WILIVE_FAIL_CAPTURE") {
                 return Err(why);
             }
-            if let Ok(path) = std::env::var("WILIVE_DEMO_IMAGE") {
+            if let Ok(dirs) = std::env::var("WILIVE_DEMO_FRAMES") {
+                let dirs: Vec<&str> = dirs.split(',').collect();
+                let i = d.unwrap_or(1).saturating_sub(1) as usize;
+                Ok(Box::new(Frames::open(dirs[i.min(dirs.len() - 1)])))
+            } else if let Ok(path) = std::env::var("WILIVE_DEMO_IMAGE") {
                 Ok(Box::new(Still::open(&path)))
             } else if real {
                 wilive_stream::screen(d, fps)

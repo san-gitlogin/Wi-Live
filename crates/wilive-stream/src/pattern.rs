@@ -187,7 +187,17 @@ impl FakeDisplays {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
-        let sizes = [(w, h), (1280, 1024), (1080, 1920), (1600, 900)];
+        // WILIVE_DISPLAY_SIZES=1920x1080,2560x1440 sets them (films with made-up screens).
+        let mut sizes = vec![(w, h), (1280, 1024), (1080, 1920), (1600, 900)];
+        if let Ok(v) = std::env::var("WILIVE_DISPLAY_SIZES") {
+            for (i, wh) in v.split(',').enumerate().take(4) {
+                if let Some((a, b)) = wh.split_once('x') {
+                    if let (Ok(a), Ok(b)) = (a.parse(), b.parse()) {
+                        sizes[i] = (a, b);
+                    }
+                }
+            }
+        }
         let v = (0..n.clamp(1, 4))
             .map(|i| Display {
                 id: i as u32 + 1,
