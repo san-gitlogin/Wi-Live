@@ -13,11 +13,9 @@
     <path d="M18.5 24.5l5.75 16 7.75-12 7.75 12 5.75-16" fill="none" stroke="#F6F1EF" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <text x="280" y="152" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="76" font-weight="650" letter-spacing="-2" fill="#F6F1EF">Wi-Live</text>
-  <text x="283" y="200" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="27" fill="#B5A8A5">Your computer's screen, live on any device in your home network.</text>
-  <g font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="600" fill="#B5A8A5">
-    <circle cx="290" cy="240" r="5" fill="#E0202E"/><text x="303" y="246">Hardware H.264, 60 fps</text>
-    <text x="480" y="246">Paired devices only</text>
-    <text x="660" y="246">Every display</text>
-    <text x="800" y="246">No cloud, no account</text>
-  </g>
+  <text x="283" y="200" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="25" fill="#B5A8A5">Your computer's screen, live on any device in your home network.</text>
+  <!-- One line of text, each label spaced from the end of the one before: they cannot
+       meet in any font (tests/static/test_banner.py). -->
+  <circle cx="290" cy="240" r="5" fill="#E0202E"/>
+  <text x="303" y="246" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="600" fill="#B5A8A5"><tspan>Hardware H.264, 60 fps</tspan><tspan dx="34">Paired devices only</tspan><tspan dx="34">Every display</tspan><tspan dx="34">No cloud, no account</tspan></text>
 </svg>
