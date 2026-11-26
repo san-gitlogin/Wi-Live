@@ -27,8 +27,19 @@ network: your computer is the only server.
 
 ---
 
+## See it in eight minutes
+
+[![Your computer's screen, live on your phone or TV: Wi-Live in under eight minutes](docs/assets/video-thumb.jpg)](https://youtu.be/-Lewe88a9JE)
+
+Installing it, pairing a phone once with a six-digit code, the four picture modes, every
+display at once, who can watch, and how fast it is, measured.
+**[Watch on YouTube](https://youtu.be/-Lewe88a9JE)** (7:51)
+
+---
+
 ## Contents
 
+- [See it in eight minutes](#see-it-in-eight-minutes)
 - [What it looks like](#what-it-looks-like)
 - [What it does](#what-it-does)
 - [Install](#install)
