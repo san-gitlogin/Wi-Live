@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- A made-up desktop for the README screenshots (tools/screenshots.py renders it to
+     docs/assets/demo-desktop.png and shares it as the "screen"). Generic windows, no
+     real product's look: never anyone's real screen. -->
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: Inter, -apple-system, 'Segoe UI', sans-serif; }
+  body { background: radial-gradient(1200px 800px at 20% 10%, #3a2f4f 0%, transparent 60%), radial-gradient(1000px 700px at 85% 90%, #4a2a2a 0%, transparent 60%), #1b1820; }
+  .bar { height: 30px; background: rgba(20,18,24,.85); color: #ddd; font-size: 14px; display: flex; align-items: center; padding: 0 16px; gap: 22px; }
+  .bar b { font-weight: 600; } .bar .r { margin-left: auto; opacity: .8; }
+  .win { position: absolute; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.08); }
+  .tb { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; color: #bbb; }
+  .dots i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #5a5560; margin-right: 6px; }
+  .ed { left: 70px; top: 80px; width: 1060px; height: 700px; background: #16151a; }
+  .ed .tb { background: #1f1d24; }
+  pre { margin: 0; padding: 18px 22px; font: 17px/1.55 'JetBrains Mono', ui-monospace, Menlo, monospace; color: #d8d4dc; }
+  .k { color: #e8768c; } .f { color: #7ec4e0; } .s { color: #a8d98a; } .c { color: #7d7685; } .n { color: #f0b46c; }
+  .term { left: 1180px; top: 120px; width: 670px; height: 420px; background: #0f0e12; }
+  .term .tb { background: #1a1820; } .term pre { font-size: 15px; color: #c9e7c1; }
+  .chart { left: 1180px; top: 580px; width: 670px; height: 400px; background: #f6f3f1; }
+  .chart .tb { background: #ece7e4; color: #444; }
+  .chart svg { display: block; margin: 10px 18px; }
+  .note { left: 70px; top: 810px; width: 1060px; height: 200px; background: #f6f3f1; color: #222; }
+  .note .tb { background: #ece7e4; color: #444; } .note p { margin: 14px 22px; font-size: 18px; line-height: 1.5; }
+</style></head><body>
+<div class="bar"><b>Desktop</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span class="r">Wed 10:42</span></div>
+<div class="win ed"><div class="tb"><span class="dots"><i></i><i></i><i></i></span>signal.rs</div><pre>
+<span class="c">// One viewer's session: proof, offer, answer, then the picture.</span>
+<span class="k">pub fn</span> <span class="f">serve</span>(st: &amp;State, media: &amp;Media, ws: WebSocket) -&gt; Result&lt;(), String&gt; {
+    <span class="k">let</span> chal = pair::<span class="f">random_hex</span>(<span class="n">16</span>);
+    <span class="f">send</span>(&amp;<span class="k">mut</span> ws, json!({<span class="s">"t"</span>: <span class="s">"chal"</span>, <span class="s">"c"</span>: chal}))?;
+    <span class="k">let</span> (id, mac) = <span class="f">hello</span>(&amp;<span class="k">mut</span> ws, HELLO_DEADLINE)?;
+    <span class="k">if</span> !st.devices.<span class="f">admit</span>(&amp;id, &amp;chal, &amp;mac) {
+        <span class="k">return</span> <span class="f">refuse</span>(ws, <span class="s">"device"</span>);
+    }
+    <span class="c">// The fingerprint, proven with this device's key.</span>
+    <span class="k">let</span> fp_mac = st.devices.<span class="f">fp_mac</span>(&amp;id, &amp;chal, &amp;media.fp);
+    <span class="f">send</span>(&amp;<span class="k">mut</span> ws, json!({<span class="s">"t"</span>: <span class="s">"ready"</span>, <span class="s">"fp"</span>: media.fp, <span class="s">"fp_mac"</span>: fp_mac}))?;
+    <span class="k">let</span> answer = rtc::<span class="f">prepare</span>(&amp;offer, local_ip, media.cert.<span class="f">clone</span>())?;
+    <span class="c">// Every frame shown the moment it is decoded.</span>
+    <span class="k">let</span> w = w.<span class="f">playout_delay</span>(MediaTime::ZERO, MediaTime::ZERO);
+    <span class="f">run</span>(session, frames)
+}
+</pre></div>
+<div class="win term"><div class="tb"><span class="dots"><i></i><i></i><i></i></span>terminal</div><pre>$ cargo test --workspace -q
+test result: ok. 64 passed; 0 failed
+test result: ok. 30 passed; 0 failed
+test result: ok. 16 passed; 0 failed
+
+$ python3 tests/run.py --all
+ tier       result   time
+ static     PASS        4 s
+ unit       PASS       30 s
+ e2e        PASS      232 s
+ latency    PASS       70 s
+ PASSED
+$ <span style="background:#c9e7c1;color:#0f0e12"> </span></pre></div>
+<div class="win chart"><div class="tb"><span class="dots"><i></i><i></i><i></i></span>Weekly sales</div>
+<svg width="630" height="330" viewBox="0 0 630 330">
+  <g fill="#c41a27"><rect x="30" y="180" width="54" height="120" rx="6"/><rect x="115" y="140" width="54" height="160" rx="6"/><rect x="200" y="160" width="54" height="140" rx="6"/><rect x="285" y="90" width="54" height="210" rx="6"/><rect x="370" y="120" width="54" height="180" rx="6"/><rect x="455" y="60" width="54" height="240" rx="6"/><rect x="540" y="40" width="54" height="260" rx="6"/></g>
+  <g font-size="15" fill="#555" text-anchor="middle"><text x="57" y="322">Mon</text><text x="142" y="322">Tue</text><text x="227" y="322">Wed</text><text x="312" y="322">Thu</text><text x="397" y="322">Fri</text><text x="482" y="322">Sat</text><text x="567" y="322">Sun</text></g>
+</svg></div>
+<div class="win note"><div class="tb"><span class="dots"><i></i><i></i><i></i></span>Notes</div>
+<p><b>Today</b> - finish the release notes, check the build on the big screen in the living room, and send the slides before the call at 4.</p></div>
+</body></html>

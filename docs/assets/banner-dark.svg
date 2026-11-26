@@ -1,0 +1,23 @@
+<!--
+  README banner, dark scheme. Paired with the other through a <picture> element so
+  GitHub swaps them with the reader's theme. Brand rules (docs/BRAND.md): warm whites
+  and near-blacks, red only for the live dot, no gradients, no shadows.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img"
+     aria-label="Wi-Live - your computer's screen, live on any device in your home network">
+  <rect width="1200" height="300" fill="#0F0C0C"/>
+  <rect x="96" y="80" width="140" height="140" rx="36" fill="#181313" stroke="#2E2626" stroke-width="2"/>
+  <g transform="translate(110 94) scale(1.75)">
+    <path d="M40 8H22C13 8 8 13 8 22v20c0 9 5 14 14 14h20c9 0 14-5 14-14V24" fill="none" stroke="#F6F1EF" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="52.5" cy="11.5" r="6.5" fill="#E0202E"/>
+    <path d="M18.5 24.5l5.75 16 7.75-12 7.75 12 5.75-16" fill="none" stroke="#F6F1EF" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="280" y="152" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="76" font-weight="650" letter-spacing="-2" fill="#F6F1EF">Wi-Live</text>
+  <text x="283" y="200" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="27" fill="#B5A8A5">Your computer's screen, live on any device in your home network.</text>
+  <g font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="600" fill="#B5A8A5">
+    <circle cx="290" cy="240" r="5" fill="#E0202E"/><text x="303" y="246">Hardware H.264, 60 fps</text>
+    <text x="480" y="246">Paired devices only</text>
+    <text x="660" y="246">Every display</text>
+    <text x="800" y="246">No cloud, no account</text>
+  </g>
+</svg>

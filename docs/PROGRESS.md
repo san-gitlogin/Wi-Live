@@ -15,7 +15,7 @@ Newest first. Read REQUIREMENTS.md, DESIGN.md and DECISIONS.md before continuing
 | 6 | Real capture: macOS (owner's Mac), Windows (DXGI + Media Foundation, VM), Linux (X11 + OpenH264, VM) | done 2026-11-26 |
 | 7 | Packaging and CI: signed macOS dmg, Windows exe, Linux x86_64 + ARM64; CI on all four | done 2026-11-26 |
 | 8 | Releases HID-Fi's way (own release key, own macOS certificate, signed SHA256SUMS); in-app updates | done 2026-11-26 (D-09) |
-| 9 | Trusted https; talk back | planned, needs the owner's DNS/Cloudflare accounts (docs/HTTPS.md) |
+| 9 | Talk back | planned (trusted https dropped: local only, D-12) |
 
 ## Log
 
@@ -81,8 +81,7 @@ A legacy floor guard (Safari 12.1 / Chrome 70 / Firefox 68).
 
 ## Next
 
-1. Trusted https and talk back, once the owner gives the DNS/Cloudflare go-ahead
-   (docs/HTTPS.md).
+1. Talk back (the viewer's microphone to the computer). No trusted https: D-12.
 2. The Linux tray on a desktop with a tray host (KDE, or GNOME with its extension):
    checked in a container without one so far.
 3. Windows self-update: proven in the VM (tests/windows/update_e2e.py); Linux self-update by the same swap, not yet run in the VM.

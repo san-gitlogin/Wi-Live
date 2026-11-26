@@ -12,6 +12,8 @@ mod icons;
 mod linux;
 mod logfile;
 mod model;
+#[cfg(target_os = "macos")]
+mod permissions;
 mod store;
 mod updater;
 
@@ -48,10 +50,56 @@ impl Host for AppHost {
         capture_allowed()
     }
     fn ask_capture(&self) {
+        // macOS asks once per signature; after that only System Settings can change it,
+        // so the pane opens too (as HID-Fi Companion does).
         #[cfg(target_os = "macos")]
         {
             let _ = wilive_stream::sck::ask();
+            let _ = std::process::Command::new("/usr/bin/open")
+                .arg(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                )
+                .spawn();
         }
+    }
+    fn restart(&self) -> bool {
+        // macOS applies a new Screen Recording grant to a fresh process: start a new copy
+        // (it waits for this one's lock, as after an update) and leave.
+        let Ok(exe) = std::env::current_exe() else {
+            return false;
+        };
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(app) = exe
+                .parent()
+                .and_then(|p| p.parent())
+                .and_then(|p| p.parent())
+                .filter(|a| a.extension().is_some_and(|e| e == "app"))
+            {
+                let _ = std::process::Command::new("/usr/bin/open")
+                    .arg("-n")
+                    .arg(app)
+                    .args(["--args", "--after-update"])
+                    .spawn();
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    std::process::exit(0)
+                });
+                return true;
+            }
+        }
+        if std::process::Command::new(&exe)
+            .arg("--after-update")
+            .spawn()
+            .is_ok()
+        {
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                std::process::exit(0)
+            });
+            return true;
+        }
+        false
     }
     fn update(&self) -> serde_json::Value {
         self.updater.view()
@@ -160,6 +208,15 @@ fn main() {
         if after_update { " (just updated)" } else { "" }
     );
     updater::clean_old();
+    // macOS: a Screen Recording grant kept for another signature of this app is cleared
+    // once, so macOS asks cleanly for this one (permissions.rs, from HID-Fi).
+    #[cfg(target_os = "macos")]
+    {
+        let dir = store.dir().to_path_buf();
+        let _ = std::thread::Builder::new()
+            .name("permissions".into())
+            .spawn(move || permissions::check(&dir, capture_allowed()));
+    }
     let updater = updater::Updater::new();
     updater.watch();
     std::panic::set_hook(Box::new(|p| log::error!("panic: {p}")));

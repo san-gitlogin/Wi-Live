@@ -37,6 +37,11 @@ pub trait Host: Send + Sync {
     fn update(&self) -> serde_json::Value {
         serde_json::Value::Null
     }
+    /// Starts a fresh copy of the app and leaves (macOS applies a new Screen Recording
+    /// grant to a new process); false if this host cannot.
+    fn restart(&self) -> bool {
+        false
+    }
     /// "check" or "install"; false if this host cannot.
     fn update_action(&self, _act: &str) -> bool {
         false

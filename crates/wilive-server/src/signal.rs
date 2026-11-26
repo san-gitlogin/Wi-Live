@@ -244,6 +244,17 @@ pub fn serve(
         let _ = send(&mut ws, serde_json::json!({"t":"error","reason":"paused"}));
         return Err("paused".into());
     }
+    // Screen recording not allowed on this computer: say so before this viewer is ever
+    // listed as watching. Admitting it, failing to capture and ending it made the owner's
+    // window flip between "watching" and not, and the viewer between live and "not
+    // allowed", every few seconds (owner, 2026-11-26).
+    if !st.host.capture_allowed() {
+        let _ = send(
+            &mut ws,
+            serde_json::json!({"t":"error","reason":"permission"}),
+        );
+        return Err("screen recording not allowed".into());
+    }
     let live = Arc::new(Live {
         id: format!("s{}", st.next_id()),
         device: id.clone(),

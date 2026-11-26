@@ -113,3 +113,31 @@ than the synthetic picture), which Wi-Live cannot remove; picking frames up the 
 they arrive raised the frames delivered from 52 to 56 fps, with no change in median
 latency beyond noise. Not gated (it needs a screen, a window on top and an allowed
 viewer); run by hand before a release.
+
+## D-11 Screen recording not allowed: refuse before listing, fix the grant like HID-Fi (2026-11-26)
+
+Seen by the owner on 0.2.0: a Windows PC watching the Mac flipped between live and "not
+allowed", and the owner's window between "Windows PC is viewing" and nobody, every ~8 s.
+The log showed why: macOS kept the Screen Recording grant for the development build's
+signature, the released app (Wi-Live's certificate) did not match it, and every retry was
+admitted, listed, failed to capture and ended.
+
+- **A session is refused with `permission` before it is listed** when the computer cannot
+  record its screen; the viewer shows one steady message ("Waiting for ... to allow
+  screen recording"), retries quietly every 5 s, and the picture starts by itself once
+  it is allowed.
+- **The stale grant is cleared once** (`permissions.rs`, HID-Fi Companion's since
+  2026-10-30): at start, if this signature is new and recording does not work, Wi-Live's
+  own entries are reset with `tccutil`, so macOS asks cleanly. A grant that works, or a
+  "Don't Allow" given to this same signature, is never touched.
+- **Allow opens Screen Recording in System Settings too** (macOS asks only once per
+  signature), and the window offers **Restart Wi-Live**, since macOS applies a new grant to
+  a fresh process.
+
+Guarded by `tests/e2e/test_owner_window.py::test_without_screen_recording_a_device_waits_calmly_and_starts_when_allowed`
+(fails without the refusal: verified).
+
+## D-12 No trusted https (2026-11-26)
+
+The owner: "No need of https! We use it locally only, just like HID-Fi." Wi-Live stays a
+local site on the home network. docs/HTTPS.md is kept as a record of what it would take.

@@ -148,7 +148,7 @@
   const REASONS = {
     paused: () => 'Sharing is paused on ' + info.name + '. It starts again when they turn it on.',
     busy: () => 'Too many people are watching ' + info.name + ' right now.',
-    permission: () => info.name + ' has not allowed screen recording for Wi-Live yet.',
+    permission: () => 'Waiting for ' + info.name + ' to allow screen recording for Wi-Live. The picture starts by itself once it is allowed.',
     capture: () => info.name + ' could not capture its screen. Trying again...',
     ended: () => 'The person at ' + info.name + ' ended your view.',
     fingerprint: () => 'This does not look like ' + info.name + '. Stopped for your safety.',
@@ -159,7 +159,9 @@
     const dev = store.get();
     if (!dev) return startPairUI();
     show('vWatch'); note('connecting');
-    overlay('Connecting to ' + info.name + '...');
+    // Waiting for something on the computer (permission, pause): keep saying that, not
+    // "Connecting" every few seconds between quiet retries.
+    if (!T.waiting) overlay('Connecting to ' + info.name + '...');
     clearTimeout(retryTimer);
     stopAll('restart');
     if (wallOn && displayList.length > 1) return buildWall(dev);
@@ -167,10 +169,11 @@
     main = connect(dev, { video: $('video'), primary: true, display: T.wantDisplay });
   }
   function again(reason) {
+    T.waiting = reason === 'permission' || reason === 'paused';
     const wait = Math.min(8000, 500 * Math.pow(2, retry++));
     overlay(REASONS[reason] ? REASONS[reason]() : 'Connection lost. Reconnecting...');
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(() => { if (!document.hidden) watch(); else again(reason); }, reason === 'paused' ? 5000 : reason === 'blocked' ? 60000 : wait);
+    retryTimer = setTimeout(() => { if (!document.hidden) watch(); else again(reason); }, reason === 'paused' || reason === 'permission' ? 5000 : reason === 'blocked' ? 60000 : wait);
   }
   function fpOf(sdp) { const m = /a=fingerprint:sha-256 ([0-9A-Fa-f:]+)/.exec(sdp); return m ? m[1].replace(/:/g, '').toLowerCase() : ''; }
 
@@ -256,7 +259,7 @@
           keepPlaying(video);
         };
         const onState = s => {
-          if (s === 'connected') { live = true; me.live = true; if (primary) { retry = 0; overlay(''); $('liveChip').hidden = false; wake(); } clearTimeout(opened); say('live'); }
+          if (s === 'connected') { live = true; me.live = true; if (primary) { retry = 0; T.waiting = false; overlay(''); $('liveChip').hidden = false; wake(); } clearTimeout(opened); say('live'); }
           else if (s === 'disconnected') { if (primary) overlay('Connection unsteady...'); }
           else if (s === 'failed') end('network', true);
         };
@@ -315,7 +318,9 @@
       me.stats = { fps: Math.round(df / dt), kbps: Math.round((r.bytes - last.bytes) * 8 / dt / 1000), w: v.frameWidth || 0, h: v.frameHeight || 0, rtt: Math.round(rtt), jb: Math.round(jbMs), dec: +decMs.toFixed(1), est };
       if (me === main || me === wall[0]) { T.stats = me.stats; hud(); }
       if (!PROBE) send({ t: 'lat', p50: est, p99: est });
-      if (v.frameWidth && (last.w !== v.frameWidth || last.h !== v.frameHeight)) send({ t: 'size', w: v.frameWidth, h: v.frameHeight });
+      // Whenever it differs from what was last told: compared with the previous tick, a
+      // size that was there from the first tick was never told (the window showed "-").
+      if (v.frameWidth && (me.toldW !== v.frameWidth || me.toldH !== v.frameHeight)) { me.toldW = v.frameWidth; me.toldH = v.frameHeight; send({ t: 'size', w: v.frameWidth, h: v.frameHeight }); }
       // The watchdog: frames decode but none is shown, or bytes arrive but nothing
       // decodes. Ask for a keyframe; if that does not help, reconnect this view.
       const quiet = performance.now() - me.shown;
@@ -831,6 +836,7 @@
     show('vOwner');
     $('oPause').addEventListener('click', () => act('/api/owner/pause', { on: $('oPause').getAttribute('aria-checked') === 'true' }));
     $('oPermBtn').addEventListener('click', () => act('/api/owner/capture', {}));
+    $('oRestartBtn').addEventListener('click', () => act('/api/owner/restart', {}));
     $('oUpdateBtn').addEventListener('click', () => act('/api/owner/update', { act: $('oUpdateBtn').dataset.act }));
     refresh();
     setInterval(refresh, 1000);

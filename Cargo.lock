@@ -4554,7 +4554,7 @@ dependencies = [
 
 [[package]]
 name = "wilive"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dirs 7.0.0",
  "hex",
@@ -4575,7 +4575,7 @@ dependencies = [
 
 [[package]]
 name = "wilive-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "getrandom 0.3.4",
  "hex",
@@ -4592,12 +4592,13 @@ dependencies = [
 
 [[package]]
 name = "wilive-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "libc",
  "log",
  "memory-stats",
+ "png",
  "qrcode",
  "serde",
  "serde_json",
@@ -4609,7 +4610,7 @@ dependencies = [
 
 [[package]]
 name = "wilive-stream"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "block2",
  "core-foundation",

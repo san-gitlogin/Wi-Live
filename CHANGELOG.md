@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.2.1 - 2026-11-26
+
+A fix release: please take it.
+
+- **No more flickering when Screen Recording is not allowed** (owner, 2026-11-26). A
+  device watching a Mac that could not record its screen was let in, failed and ended
+  every few seconds: the owner's window flipped "watching" on and off, the device between
+  live and "not allowed". Now it is refused before it is listed, shows one steady
+  "waiting" message, and starts by itself once recording is allowed. A grant macOS kept for
+  another signature of Wi-Live is cleared once at start (as HID-Fi Companion does), Allow
+  also opens Screen Recording in System Settings, and the window has Restart Wi-Live.
+- **The window shows each viewer's picture size.** It was told only when it changed, so a
+  picture that kept one size from the start showed "-".
+- **The README** has a banner and screenshots (made from a made-up desktop by
+  `tools/screenshots.py`, never a real screen).
+
 ## v0.2.0 - 2026-11-26
 
 - **Updates by themselves, safely.** Once a day Wi-Live checks for a new version; the

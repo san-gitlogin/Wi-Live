@@ -9,6 +9,7 @@
 //! WILIVE_REAL_SCREEN=1 this computer's real screen instead of the pattern
 //! WILIVE_SOUND=test|real  a test tone (clicks each second) or the real sound
 //! WILIVE_PORT=p       exactly this port
+//! WILIVE_DEMO_IMAGE=a.png  a still picture as the screen (README screenshots; never a real screen)
 //! WILIVE_HOME=dir     keep devices and the log in dir across restarts (as the app does)
 //! WILIVE_FILL_LOG=n   start with n made-up log events; WILIVE_FILL_DEVICES=n with n devices
 //! stdin: "still" / "move" (freeze the pattern), "unplug <id>" (take a display away)
@@ -16,6 +17,56 @@
 use std::sync::Arc;
 use wilive_server::signal::Media;
 use wilive_server::state::{Host, NoPersist, State};
+
+/// A still picture as the screen (WILIVE_DEMO_IMAGE): the README's screenshots show
+/// a made-up desktop, never anyone's real one.
+struct Still {
+    w: u32,
+    h: u32,
+    bgra: Vec<u8>,
+}
+impl Still {
+    fn open(path: &str) -> Still {
+        let dec = png::Decoder::new(std::io::BufReader::new(
+            std::fs::File::open(path).expect("WILIVE_DEMO_IMAGE"),
+        ));
+        let mut r = dec.read_info().expect("a PNG");
+        let mut buf = vec![0; r.output_buffer_size().expect("size")];
+        let info = r.next_frame(&mut buf).expect("a PNG frame");
+        let (w, h) = (info.width & !1, info.height & !1);
+        let ch = info.color_type.samples();
+        let mut bgra = vec![255u8; (w * h * 4) as usize];
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                let s = (y * info.width as usize + x) * ch;
+                let d = (y * w as usize + x) * 4;
+                bgra[d] = buf[s + 2];
+                bgra[d + 1] = buf[s + 1];
+                bgra[d + 2] = buf[s];
+            }
+        }
+        Still { w, h, bgra }
+    }
+}
+impl Source for Still {
+    fn size(&self) -> (u32, u32) {
+        (self.w, self.h)
+    }
+    fn grab(
+        &mut self,
+        _force: bool,
+        f: &mut dyn FnMut(&wilive_stream::frame::Frame),
+    ) -> Result<bool, String> {
+        // Every frame, as a real screen would: the window's fps and picture size read as live.
+        f(&wilive_stream::frame::Frame {
+            width: self.w,
+            height: self.h,
+            stride: (self.w * 4) as usize,
+            bgra: &self.bgra,
+        });
+        Ok(true)
+    }
+}
 
 /// Devices and the log as files in WILIVE_HOME (the app's own store does the same).
 struct DirPersist(std::path::PathBuf);
@@ -92,7 +143,9 @@ fn main() {
             if let Ok(why) = std::env::var("WILIVE_FAIL_CAPTURE") {
                 return Err(why);
             }
-            if real {
+            if let Ok(path) = std::env::var("WILIVE_DEMO_IMAGE") {
+                Ok(Box::new(Still::open(&path)))
+            } else if real {
                 wilive_stream::screen(d, fps)
             } else if still {
                 Ok(Box::new(Pattern::new(w, h).still()))

@@ -404,6 +404,12 @@ fn owner(st: &State, req: &Request, urls: &[String]) -> Response {
             }
             ok()
         }
+        ("POST", "/api/owner/restart") => {
+            if !st.host.restart() {
+                return refuse(Refuse::Unknown);
+            }
+            ok()
+        }
         ("POST", "/api/owner/capture") => {
             st.host.ask_capture();
             ok()
